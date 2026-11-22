@@ -57,7 +57,7 @@ fn attempt_facts_require_sidecar_drain_and_carry_transfer_count() {
         metadata.clone(),
         files,
         staging.clone(),
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         None,
     )
     .expect("drained Sidecar must yield attempt facts");
@@ -126,7 +126,7 @@ fn pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journa
             serde_json::json!({"tweet_id":"123","media":[]}),
             Vec::new(),
             staging,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             None,
         )
         .unwrap();
@@ -287,7 +287,7 @@ fn pending_publication_dropped_without_finalize_is_inert_and_releases_admission(
         serde_json::json!({"tweet_id":"123","media":[]}),
         Vec::new(),
         staging,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         None,
     )
     .unwrap();
@@ -453,7 +453,7 @@ fn serializer_failure_in_production_finalizer_publishes_nothing() {
         serde_json::json!({"tweet_id":"123","media":[]}),
         Vec::new(),
         staging,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         None,
     )
     .unwrap();
@@ -848,7 +848,7 @@ fn registered_undrained_writer_is_refused_by_production_finalizer() {
         serde_json::json!({"tweet_id":"123","media":[]}),
         Vec::new(),
         staging,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         None,
     )
     .unwrap();

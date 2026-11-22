@@ -27,7 +27,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use xarchive_download::Aria2StartupFailure;
 use xarchive_download::{
     Aria2Supervisor, Aria2SupervisorConfig, Aria2TransferDriver, MediaTransferPlan,
@@ -50,6 +50,7 @@ pub(super) fn execute_aria2_archive(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
+    #[cfg(windows)] containment: Option<&crate::executor::WindowsAttemptWriterDomain>,
 ) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
     let extraction =
         extract_v2(supervisor, request, cancellation).map_err(|message| (message, None))?;
@@ -67,7 +68,7 @@ pub(super) fn execute_aria2_archive(
             (extraction.clone(), initial_plan),
             aria2_program,
             network,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             containment,
         )?;
         let converted = match transfer_files(&final_plan, &outcomes, staging_dir) {
@@ -77,7 +78,7 @@ pub(super) fn execute_aria2_archive(
         return Ok(SidecarArchiveResult {
             metadata: extraction_to_metadata(&final_extraction),
             files: converted,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             retained_aria2,
         });
     };
@@ -86,12 +87,12 @@ pub(super) fn execute_aria2_archive(
     Ok(SidecarArchiveResult {
         metadata,
         files,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: None,
     })
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub(super) fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
@@ -99,7 +100,8 @@ pub(super) fn transfer_once(
     network: &crate::executor::ExecutorNetworkConfig,
     user_args: &[String],
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
-    #[cfg(target_os = "linux")] writer_slot: u8,
+    #[cfg(windows)] containment: Option<&crate::executor::WindowsAttemptWriterDomain>,
+    writer_slot: u8,
 ) -> Result<Vec<TransferOutcome>, TransferAttemptFailure> {
     let aria2_config = aria2_config(aria2_program, network, user_args)
         .map_err(|error| TransferFailure {
@@ -111,30 +113,56 @@ pub(super) fn transfer_once(
         .map_err(TransferAttemptFailure::diagnostic)?;
     let startup = match containment {
         Some(domain) => {
-            // The attempt-bound recorded domain plus the
-            // recover-before-create protocol replaces the retired
-            // per-process unique group name. The refresh transfer uses a
-            // distinct writer slot, so successor recovery enumeration
-            // stays exact.
-            let owner = crate::executor::recover_and_create_writer_group(
-                domain,
-                &format!("aria2-{writer_slot}"),
-            )
-            .map_err(|error| {
-                TransferAttemptFailure::diagnostic(TransferFailure {
-                    media_id: None,
-                    code: TransferFailureCode::Failed,
-                    message: error.to_string(),
-                    aria2_error_code: None,
-                })
-            })?;
-            Aria2Supervisor::spawn_contained_owned(
-                aria2_config,
-                owner,
-                &domain.provisioning.python,
-                &domain.provisioning.launcher,
-            )
-            .map_err(TransferAttemptFailure::from_startup)
+            let role = match writer_slot {
+                0 => "aria2-0",
+                1 => "aria2-1",
+                _ => {
+                    return Err(TransferAttemptFailure::diagnostic(TransferFailure {
+                        media_id: None,
+                        code: TransferFailureCode::Failed,
+                        message: format!("unexpected aria2 writer slot {writer_slot}"),
+                        aria2_error_code: None,
+                    }));
+                }
+            };
+            #[cfg(target_os = "linux")]
+            {
+                // The attempt-bound recorded domain plus the
+                // recover-before-create protocol replaces the retired
+                // per-process unique group name. The refresh transfer uses a
+                // distinct writer slot, so successor recovery enumeration
+                // stays exact.
+                let owner = crate::executor::recover_and_create_writer_group(domain, role)
+                    .map_err(|error| {
+                        TransferAttemptFailure::diagnostic(TransferFailure {
+                            media_id: None,
+                            code: TransferFailureCode::Failed,
+                            message: error.to_string(),
+                            aria2_error_code: None,
+                        })
+                    })?;
+                Aria2Supervisor::spawn_contained_owned(
+                    aria2_config,
+                    owner,
+                    &domain.provisioning.python,
+                    &domain.provisioning.launcher,
+                )
+                .map_err(TransferAttemptFailure::from_startup)
+            }
+            #[cfg(windows)]
+            {
+                let owner = crate::executor::recover_and_create_windows_writer_job(domain, role)
+                    .map_err(|error| {
+                        TransferAttemptFailure::diagnostic(TransferFailure {
+                            media_id: None,
+                            code: TransferFailureCode::Failed,
+                            message: error.to_string(),
+                            aria2_error_code: None,
+                        })
+                    })?;
+                Aria2Supervisor::spawn_windows_contained_owned(aria2_config, owner)
+                    .map_err(TransferAttemptFailure::from_startup)
+            }
         }
         None => Aria2Supervisor::spawn(aria2_config).map_err(|error| {
             TransferAttemptFailure::diagnostic(TransferFailure {
@@ -149,7 +177,7 @@ pub(super) fn transfer_once(
     run_transfer_with_supervisor(plan, cancellation, network, aria2)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub(super) fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
@@ -267,6 +295,7 @@ pub(super) fn transfer_with_one_refresh(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
+    #[cfg(windows)] containment: Option<&crate::executor::WindowsAttemptWriterDomain>,
 ) -> Result<
     (
         ExtractionResult,
@@ -284,9 +313,9 @@ pub(super) fn transfer_with_one_refresh(
         aria2_program,
         network,
         &user_args,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         containment,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         0,
     ) {
         Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes, None)),
@@ -316,9 +345,9 @@ pub(super) fn transfer_with_one_refresh(
                 aria2_program,
                 network,
                 &user_args,
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", windows))]
                 containment,
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", windows))]
                 1,
             )
             .map_err(TransferAttemptFailure::into_archive_error)?;
@@ -396,7 +425,7 @@ impl TransferAttemptFailure {
         )
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     fn from_startup(failure: Aria2StartupFailure) -> Self {
         Self {
             diagnostic: TransferFailure {

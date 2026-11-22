@@ -401,21 +401,23 @@ impl WindowsWriterJob {
         )
         .map_err(io::Error::from)
     }
+}
 
-    /// Launch one registered writer with only its standard handles inherited.
-    /// Admission is held closed to concurrent publication while CreateProcess
-    /// atomically assigns the writer to this job.
-    pub fn spawn_piped_with_environment(
-        &mut self,
+struct PreparedWriterSpawn {
+    executable_name: widestring::U16CString,
+    env: Vec<u16>,
+    command: Vec<u16>,
+    state: std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
+}
+
+impl WindowsWriterJob {
+    fn prepare_writer_spawn(
+        &self,
         executable: &Path,
         args: &[&str],
         set: &[(String, String)],
         remove: &[String],
-    ) -> io::Result<(
-        firehazard::io::WritePipe,
-        WindowsPipeReader,
-        WindowsPipeReader,
-    )> {
+    ) -> io::Result<PreparedWriterSpawn> {
         use std::os::windows::ffi::OsStrExt;
         if self.admission_closed
             || self.writer_started
@@ -440,17 +442,88 @@ impl WindowsWriterJob {
             .as_ref()
             .ok_or_else(|| io::Error::other("writer is not registered"))?;
         let state = state.clone();
-        let admission = state
-            .lock()
-            .map_err(|_| io::Error::other("writer registry poisoned"))?;
-        if admission.closed {
-            return Err(io::Error::other("writer admission closed"));
-        }
         let executable_name = widestring::U16CString::from_vec(
             executable.as_os_str().encode_wide().collect::<Vec<_>>(),
         )
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in executable"))?;
         let env = windows_environment(set, remove)?;
+        let command = windows_command_line(executable, args)?;
+        Ok(PreparedWriterSpawn {
+            executable_name,
+            env,
+            command,
+            state,
+        })
+    }
+
+    /// Launch one registered writer without inherited pipes, atomically
+    /// assigned to this job with console output suppressed.
+    pub fn spawn_silent_with_environment(
+        &mut self,
+        executable: &Path,
+        args: &[&str],
+        set: &[(String, String)],
+        remove: &[String],
+    ) -> io::Result<()> {
+        let mut prepared = self.prepare_writer_spawn(executable, args, set, remove)?;
+        let admission = prepared
+            .state
+            .lock()
+            .map_err(|_| io::Error::other("writer registry poisoned"))?;
+        if admission.closed {
+            return Err(io::Error::other("writer admission closed"));
+        }
+        let jobs = [job::Handle::from(&self.job)];
+        let attributes = [process::ThreadAttributeRef::job_list(&jobs)];
+        let list = process::ThreadAttributeList::try_from(attributes.as_slice())
+            .map_err(io::Error::from)?;
+        let startup = process::StartupInfoExW {
+            attribute_list: Some(list),
+            ..Default::default()
+        };
+        let writer = process::create_process_w(
+            prepared.executable_name.as_ucstr(),
+            Some(&mut prepared.command),
+            None,
+            None,
+            false,
+            process::EXTENDED_STARTUPINFO_PRESENT
+                | process::CREATE_NO_WINDOW
+                | process::CREATE_UNICODE_ENVIRONMENT,
+            prepared.env.as_slice(),
+            (),
+            &startup,
+        )
+        .map_err(io::Error::from)?;
+        self.writer = Some(writer);
+        self.writer_started = true;
+        drop(admission);
+        drop(startup);
+        Ok(())
+    }
+
+    /// Launch one registered writer with only its standard handles inherited.
+    /// Admission is held closed to concurrent publication while CreateProcess
+    /// atomically assigns the writer to this job.
+    pub fn spawn_piped_with_environment(
+        &mut self,
+        executable: &Path,
+        args: &[&str],
+        set: &[(String, String)],
+        remove: &[String],
+    ) -> io::Result<(
+        firehazard::io::WritePipe,
+        WindowsPipeReader,
+        WindowsPipeReader,
+    )> {
+        let mut prepared = self.prepare_writer_spawn(executable, args, set, remove)?;
+        let admission = prepared
+            .state
+            .lock()
+            .map_err(|_| io::Error::other("writer registry poisoned"))?;
+        if admission.closed {
+            return Err(io::Error::other("writer admission closed"));
+        }
         let attrs = firehazard::security::Attributes::new(None, true);
         let (child_stdin, parent_stdin) =
             firehazard::io::create_pipe(Some(&attrs), 0).map_err(io::Error::from)?;
@@ -478,17 +551,16 @@ impl WindowsWriterJob {
         startup.startup_info.std_input = Some(firehazard::io::ReadHandle::from(&child_stdin));
         startup.startup_info.std_output = Some(firehazard::io::WriteHandle::from(&child_stdout));
         startup.startup_info.std_error = Some(firehazard::io::WriteHandle::from(&child_stderr));
-        let mut command = windows_command_line(executable, args)?;
         let writer = process::create_process_w(
-            executable_name.as_ucstr(),
-            Some(&mut command),
+            prepared.executable_name.as_ucstr(),
+            Some(&mut prepared.command),
             None,
             None,
             true,
             process::EXTENDED_STARTUPINFO_PRESENT
                 | process::CREATE_NO_WINDOW
                 | process::CREATE_UNICODE_ENVIRONMENT,
-            env.as_slice(),
+            prepared.env.as_slice(),
             (),
             &startup,
         )

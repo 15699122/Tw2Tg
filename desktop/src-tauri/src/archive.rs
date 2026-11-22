@@ -44,7 +44,7 @@ pub(crate) fn upsert_browser_user(
 pub(crate) struct SidecarArchiveResult {
     pub(crate) metadata: serde_json::Value,
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
 }
 
@@ -94,10 +94,10 @@ impl PendingArchivePublication {
             files,
             staging_dir: _,
             transfer_file_count,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
                 retained_aria2: facts_retained_aria2,
         } = facts;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         if facts_retained_aria2.is_some() {
             return Err((
                 context,
@@ -370,7 +370,7 @@ pub(crate) struct AttemptArchiveFacts {
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
     pub(crate) staging_dir: std::path::PathBuf,
     pub(crate) transfer_file_count: usize,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     #[allow(dead_code)]
     pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
 }
@@ -387,7 +387,9 @@ impl AttemptArchiveFacts {
         metadata: serde_json::Value,
         files: Vec<xarchive_protocol::DownloadFile>,
         staging_dir: std::path::PathBuf,
-        #[cfg(target_os = "linux")] retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+        #[cfg(any(target_os = "linux", windows))] retained_aria2: Option<
+            xarchive_download::Aria2Supervisor,
+        >,
     ) -> Result<Self, xarchive_sidecar_supervisor::SupervisorError> {
         supervisor.shutdown()?;
         let transfer_file_count = files.len();
@@ -397,7 +399,7 @@ impl AttemptArchiveFacts {
             files,
             staging_dir,
             transfer_file_count,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             retained_aria2,
         })
     }
@@ -451,6 +453,8 @@ pub(crate) struct SidecarDownloadRequest {
 pub(crate) struct ArchiveExecutionContext {
     #[cfg(target_os = "linux")]
     pub(crate) containment: Option<crate::executor::AttemptWriterDomain>,
+    #[cfg(windows)]
+    pub(crate) containment: Option<crate::executor::WindowsAttemptWriterDomain>,
     pub(crate) attempt: Option<xarchive_workflow::AttemptIdentity>,
     pub(crate) publication_registration: Option<xarchive_workflow::WriterRegistration>,
     pub(crate) telegram_config_file: Option<PathBuf>,
@@ -720,10 +724,10 @@ fn collect_attempt_facts(
         }
     };
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     let retained_aria2 = result.retained_aria2.take();
     if let Err(error) = context.shutdown_sidecar() {
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         {
             // Preserve the transfer-retained owner before reporting the drain
             // failure so the caller is not left without cleanup authority. The
@@ -741,7 +745,7 @@ fn collect_attempt_facts(
     // `run_transfer_with_supervisor` retains the supervisor exactly when its
     // shutdown reports failure, so any `Some` here is an undrained writer and
     // must refuse facts construction rather than flow into publication.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     if retained_aria2.is_some() {
         return Err((
             "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
@@ -756,7 +760,7 @@ fn collect_attempt_facts(
         files: result.files,
         staging_dir: attempt_staging,
         transfer_file_count: 0,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: None,
     };
     let facts = AttemptArchiveFacts {
@@ -843,7 +847,7 @@ impl ArchiveExecutionContext {
         Self {
             attempt: None,
             publication_registration: None,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             containment: None,
             telegram_config_file: None,
             telegram: crate::config::TelegramConfig::default(),
@@ -930,7 +934,7 @@ impl ArchiveExecutionContext {
             self.aria2_program.as_deref(),
             self.use_aria2,
             &self.network,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             self.containment.as_ref(),
         )
     }

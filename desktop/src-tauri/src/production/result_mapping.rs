@@ -38,7 +38,7 @@ pub(super) fn execute_gallery_dl_archive(
     Ok(SidecarArchiveResult {
         metadata,
         files,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: None,
     })
 }

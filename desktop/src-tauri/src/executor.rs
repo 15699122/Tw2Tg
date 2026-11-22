@@ -46,7 +46,7 @@ use xarchive_workflow::coordination::{LockError, LockScope};
 #[cfg(test)]
 use xarchive_workflow::{AttemptIdentity, ExecutionReservation};
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 mod containment;
 mod contracts;
 mod factory;
@@ -76,11 +76,18 @@ pub use crate::executor::containment::{AttemptWriterDomain, LinuxExecutionContai
 // exactly that reach through the parent rather than being widened to `pub`.
 // `ATTEMPT_WRITER_ROLES` is deliberately absent: only the containment module
 // enumerates the roles, and re-exporting it produced an unused import.
+#[cfg(windows)]
+pub use crate::executor::containment::WindowsAttemptWriterDomain;
 #[cfg(target_os = "linux")]
 pub(crate) use crate::executor::containment::{
     attempt_writer_base, containment_record_root, recover_and_create_writer_group,
     recover_predecessor_writer_domains, recover_writer_domain_set,
     recover_writer_domain_set_with_evidence,
+};
+#[cfg(windows)]
+pub(crate) use crate::executor::containment::{
+    containment_record_root, recover_and_create_windows_writer_job,
+    recover_windows_predecessor_writer_domains,
 };
 
 // The in-memory implementations were `pub struct`s of this module before the
