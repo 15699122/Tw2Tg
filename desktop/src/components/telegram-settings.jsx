@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Button } from "./ui/button";
 import SettingsSection from "./settings-section.jsx";
 import { telegramSettingsInput } from "../lib/telegram-state.js";
+import { statusMessageClass } from "../lib/ui-state.js";
 
 export default function TelegramSettings({ expanded, onToggle }) {
   const [projection, setProjection] = useState(null);
@@ -35,9 +36,9 @@ export default function TelegramSettings({ expanded, onToggle }) {
     <div className="telegram-settings-content" aria-busy={busy}>
       <p className="settings-help">归档与发送状态独立；Bot API 确认发送成功不代表对方已接收或已读。</p>
       {projection && <div className="telegram-service-status" role="status">
-        <span>凭据服务<strong>{projection.provider_available ? "可用" : "未提供（无明文回退）"}</strong></span>
-        <span>Bot Token<strong>{projection.settings.bot_token_present ? "已保存" : "未保存"}</strong></span>
-        <span>Sender<strong>{projection.sender_running ? "运行中" : "已停止"}</strong></span>
+        <span data-tone={projection.provider_available ? "ok" : "warn"}><i className="service-dot" aria-hidden="true" /><small>凭据服务</small><strong>{projection.provider_available ? "可用" : "未提供（无明文回退）"}</strong></span>
+        <span data-tone={projection.settings.bot_token_present ? "ok" : "warn"}><i className="service-dot" aria-hidden="true" /><small>Bot Token</small><strong>{projection.settings.bot_token_present ? "已保存" : "未保存"}</strong></span>
+        <span data-tone={projection.sender_running ? "ok" : "off"}><i className="service-dot" aria-hidden="true" /><small>Sender</small><strong>{projection.sender_running ? "运行中" : "已停止"}</strong></span>
       </div>}
       {settings && <fieldset className="telegram-settings-fields" disabled={busy}>
         <legend className="sr-only">Telegram 设置</legend>
@@ -47,7 +48,7 @@ export default function TelegramSettings({ expanded, onToggle }) {
         </div>
         <div className="settings-fields telegram-settings-grid">
           <div className="settings-field"><label htmlFor="telegram-endpoint-mode">Endpoint 模式</label><select id="telegram-endpoint-mode" value={settings.endpoint_mode} onChange={(e) => field("endpoint_mode", e.target.value)}><option value="cloud">Cloud HTTPS</option><option value="local">Local 回环服务</option></select></div>
-          <div className="settings-field telegram-field-wide"><label htmlFor="telegram-api-base">API 地址</label><input id="telegram-api-base" type="url" value={settings.api_base} onChange={(e) => field("api_base", e.target.value)} /></div>
+          <div className="settings-field telegram-field-wide"><label htmlFor="telegram-api-base">API 地址</label><input id="telegram-api-base" className="mono-input" type="url" placeholder="https://api.telegram.org" value={settings.api_base} onChange={(e) => field("api_base", e.target.value)} /></div>
           <div className="settings-field"><label htmlFor="telegram-chat-id">Chat ID</label><input id="telegram-chat-id" value={settings.chat_id} onChange={(e) => field("chat_id", e.target.value)} /></div>
           <div className="settings-field"><label htmlFor="telegram-topic-id">Topic ID</label><input id="telegram-topic-id" type="number" value={settings.message_thread_id ?? ""} onChange={(e) => field("message_thread_id", e.target.value === "" ? null : Number(e.target.value))} /></div>
           <div className="settings-field"><label htmlFor="telegram-rotation-policy">同 bot 凭据轮换</label><select id="telegram-rotation-policy" value={settings.credential_rotation_resume_policy} onChange={(e) => field("credential_rotation_resume_policy", e.target.value)}><option value="automatic">自动续接已知待发项</option><option value="confirm">逐批确认</option></select></div>
@@ -63,11 +64,11 @@ export default function TelegramSettings({ expanded, onToggle }) {
         <div className="telegram-action-group">
           <span className="telegram-action-label">连接检查</span>
           <div className="button-row">
-            <Button disabled={busy || !projection?.settings.bot_token_present} onClick={() => action("inspect_telegram_connection", { operation: "auth", confirmed: false })}>检查认证</Button>
-            <Button disabled={busy || !projection?.settings.bot_token_present} onClick={() => action("inspect_telegram_connection", { operation: "target", confirmed: false })}>检查目标</Button>
-            <Button disabled={busy || !projection?.settings.bot_token_present} onClick={() => { if (window.confirm("向已保存目标发送一条真实测试消息？未知结果不得自动重复。")) action("inspect_telegram_connection", { operation: "message", confirmed: true }); }}>发送测试消息…</Button>
+            <Button variant="outline" disabled={busy || !projection?.settings.bot_token_present} onClick={() => action("inspect_telegram_connection", { operation: "auth", confirmed: false })}>检查认证</Button>
+            <Button variant="outline" disabled={busy || !projection?.settings.bot_token_present} onClick={() => action("inspect_telegram_connection", { operation: "target", confirmed: false })}>检查目标</Button>
+            <Button variant="outline" disabled={busy || !projection?.settings.bot_token_present} onClick={() => { if (window.confirm("向已保存目标发送一条真实测试消息？未知结果不得自动重复。")) action("inspect_telegram_connection", { operation: "message", confirmed: true }); }}>发送测试消息…</Button>
             <Button disabled={busy || !token || !projection?.provider_available} onClick={() => action("replace_telegram_credential", { token })}>验证并替换凭据</Button>
-            <Button variant="outline" disabled={busy || !projection?.provider_available} onClick={() => action("delete_telegram_credential")}>删除凭据</Button>
+            <Button variant="destructive" disabled={busy || !projection?.provider_available} onClick={() => action("delete_telegram_credential")}>删除凭据</Button>
           </div>
         </div>
         <div className="telegram-action-group">
@@ -79,7 +80,7 @@ export default function TelegramSettings({ expanded, onToggle }) {
         </div>
       </div>
       {!!projection?.resume_candidates.length && <Button disabled={busy} onClick={() => action("confirm_telegram_resume", { generation: projection.generation, outboxIds: projection.resume_candidates })}>确认本次轮换的 {projection.resume_candidates.length} 个候选项</Button>}
-      {message && <p role="status" className={message.includes("未完成") || message.includes("不可用") ? "settings-message settings-message-error" : "settings-message"}>{message}</p>}
+      {message && <p role="status" className={statusMessageClass(message)}>{message}</p>}
       {projection?.sender_error && <p role="status" className="settings-message settings-message-error">{projection.sender_error}</p>}
     </div>
   </SettingsSection>;

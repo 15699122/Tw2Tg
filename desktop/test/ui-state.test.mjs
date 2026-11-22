@@ -163,15 +163,17 @@ test("proxyStatusText does not render a mode description as a success", () => {
   assert.match(status.text, /操作系统|环境/);
 });
 
-test("proxyCoverageText keeps the backend note and the Chinese clauses apart", () => {
-  // The backend note ends in a full stop; direct concatenation produced
-  // "enabled.暂不支持…" with no separator.
+test("proxyCoverageText stays in one language and never echoes the English backend note", () => {
+  // The backend note is an English sentence. Rendering it verbatim produced
+  // mixed-language prose such as "System follows … 暂不支持…", so the page states
+  // the policy in Chinese and keeps the backend wording out of the UI.
   const note = proxyCoverageText({
     system_proxy_note: "System follows the environment and is enabled.",
     system_proxy_supported: false,
   });
-  assert.doesNotMatch(note, /enabled\.暂不支持/);
-  assert.match(note, /enabled\. 暂不支持/);
+  assert.ok(note.length > 0);
+  assert.ok(!note.includes("System follows"));
+  assert.match(note, /^[\u4e00-\u9fff]/);
 });
 
 test("proxyCoverageText states the boundary and never promises unsupported PAC support", () => {
@@ -179,15 +181,17 @@ test("proxyCoverageText states the boundary and never promises unsupported PAC s
     system_proxy_note: "System follows the environment.",
     system_proxy_supported: false,
   });
-  assert.match(note, /暂不支持 PAC\/WPAD/);
+  assert.match(note, /仅读取启动进程的代理环境变量/);
+  assert.match(note, /无法按 URL 解析 PAC 或 WPAD/);
   assert.match(note, /始终直连/);
 
   const supported = proxyCoverageText({
     system_proxy_note: "System uses the Windows resolver.",
     system_proxy_supported: true,
   });
-  assert.match(supported, /支持按 URL 解析 PAC 与 WPAD/);
-  assert.ok(!supported.includes("暂不支持"));
+  assert.match(supported, /逐个 URL 解析/);
+  assert.match(supported, /包括静态代理、PAC 与 WPAD/);
+  assert.ok(!supported.includes("无法按 URL 解析"));
 });
 
 test("proxyCoverageText returns nothing when the backend sent no note", () => {

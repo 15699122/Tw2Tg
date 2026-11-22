@@ -16,11 +16,11 @@ export function ComponentBootstrapStatus({ bootstrap }) {
   if (!bootstrap) return null;
   const ready = bootstrap.ready && bootstrap.catalog_valid;
   return (
-    <div className="dependency-missing" role="status">
+    <div className={`dependency-status${ready ? "" : " dependency-missing"}`} role="status">
       <span>
         <strong>{ready ? "组件目录已就绪" : "组件目录需要设置"}</strong>
         <br />
-        <small>{bootstrap.message} · catalog {bootstrap.catalog_version}</small>
+        <small>{bootstrap.message} · catalog <code>{bootstrap.catalog_version}</code></small>
       </span>
     </div>
   );

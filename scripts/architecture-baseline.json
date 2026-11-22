@@ -1149,7 +1149,7 @@
     "desktop/src/components/connection-status.jsx": {
       "category": "frontend-source",
       "lines": 44,
-      "sha256": "6a0c523eee60996871c962d48400e07078684c2a6745e612ea84c8d96a5c363e"
+      "sha256": "de4aa2b4a1400bbd8145e933bc7017ea5a1ae5f825222fb79c7db2e7ac6170ec"
     },
     "desktop/src/components/copyable-path.jsx": {
       "category": "frontend-source",
@@ -1178,8 +1178,8 @@
     },
     "desktop/src/components/telegram-settings.jsx": {
       "category": "frontend-source",
-      "lines": 86,
-      "sha256": "2bcbcf5eab461c1da253b429448f90efc1c44969094d5efc1764798650336713"
+      "lines": 87,
+      "sha256": "f286f98ab67da95121a165a2e4581bfe62786c115b029c80eac4578c6941b1df"
     },
     "desktop/src/components/ui/badge.jsx": {
       "category": "frontend-source",
@@ -1228,8 +1228,8 @@
     },
     "desktop/src/lib/ui-state.js": {
       "category": "frontend-source",
-      "lines": 285,
-      "sha256": "a525f0a5402c0792db828e13151f0b4f20e4a925f3e3924fc23e1c4f1180ef67"
+      "lines": 292,
+      "sha256": "3f51b9f2d67000b33bd5c4b6fded6c7a31446becec7bde03378c31dc6e7c9b30"
     },
     "desktop/src/lib/utils.js": {
       "category": "frontend-source",
@@ -1244,22 +1244,22 @@
     "desktop/src/pages/batches-page.jsx": {
       "category": "frontend-source",
       "lines": 29,
-      "sha256": "2f0a6a4ca9d47ddd5764dbcab3d84df6ea47822edea5788764edc5dae1fa32ed"
+      "sha256": "7315415a9491b717e7cafa4771f67cde556eb220f973f835ba5ccdfefca23683"
     },
     "desktop/src/pages/dashboard-page.jsx": {
       "category": "frontend-source",
       "lines": 8,
-      "sha256": "8a232d19f4278bc5c891f3e1a578f908e16921fc6e8f22757d42fee760fbe555"
+      "sha256": "60c0857bf559cd07e23379b1b644423fbc2f5c69d81e54396678c0b6de9942ee"
     },
     "desktop/src/pages/download-config-page.jsx": {
       "category": "frontend-source",
-      "lines": 75,
-      "sha256": "643a8ea632047d39ba084d9806a7c0dd09c3e048949bd1b6f9e72c6ad663192f"
+      "lines": 77,
+      "sha256": "58d5c94da76ca01c917bab0ed614351b1578844a5a390d04105fd4c4d1403f0f"
     },
     "desktop/src/pages/download-jobs-page.jsx": {
       "category": "frontend-source",
       "lines": 32,
-      "sha256": "d497f11b028ffea16b63144664974b26e39ad99528fbb7430c383c6b569e0eac"
+      "sha256": "ded843ddd492b225c20986bede7e82bb0f1961bf1c1dfd31e2d6398ffc424faa"
     },
     "desktop/src/pages/logs-page.jsx": {
       "category": "frontend-source",
@@ -1268,18 +1268,18 @@
     },
     "desktop/src/pages/preview-accept-page.jsx": {
       "category": "frontend-source",
-      "lines": 169,
-      "sha256": "015c2721f8cb713b95a759c73fe66162639203a7c1e76d296aa6a630ca0313ae"
+      "lines": 202,
+      "sha256": "c4f629c989e81d0390c8b9e1a634ff8ccb43b40883251ab76468e16bd80ca721"
     },
     "desktop/src/pages/settings-page.jsx": {
       "category": "frontend-source",
       "lines": 167,
-      "sha256": "61b137e4e085a85354d2c2d25f1c9eb7dd3a13bb46decc5a0c731c6174d77f79"
+      "sha256": "9fffabb7614d6ac6e38ebb3e8a251384981581d7b00258aa9b4c1c80bf9a35cf"
     },
     "desktop/src/pages/shared.jsx": {
       "category": "frontend-source",
-      "lines": 14,
-      "sha256": "b608f551a8eaeda8f1f164c6ec1986081d79b689180f00b32fb8aabf52cfaf61"
+      "lines": 17,
+      "sha256": "1eda7a13ff8d6f6fd31d9ff9c551a5a33051628364b82def0d1e03321ddbf9b2"
     },
     "desktop/src/pages/storage-page.jsx": {
       "category": "frontend-source",

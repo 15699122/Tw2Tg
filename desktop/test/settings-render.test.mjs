@@ -138,3 +138,33 @@ test("Toggle handles Enter once and preserves native Space and busy behavior", a
   input({}).onChange({target: {checked: true}});
   assert.deepEqual(calls, [true, false, true]);
 });
+
+test("record import page renders inside cards with a mono root field", async () => {
+  const result = await build({
+    stdin: { contents: `
+      import React from 'react';
+      import { renderToStaticMarkup } from 'react-dom/server';
+      import PreviewAcceptPage from './src/pages/preview-accept-page.jsx';
+      export const html = renderToStaticMarkup(React.createElement(PreviewAcceptPage, {
+        recordsJson: '{"schema_version":1,"kind":"tw2tg.download-records","records":[]}',
+        archiveRoot: 'D:/Archive',
+        previewResult: { entries: [{ identity: 'tweet-1', verdict: 'accept', reason: '' }] },
+        previewMessage: '预览完成',
+      }));
+      export const failureHtml = renderToStaticMarkup(React.createElement(PreviewAcceptPage, { previewMessage: '预览失败：bad json' }));`,
+      resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
+    bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
+  });
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
+  // Both panels are cards now, and the root path field is monospace.
+  assert.match(mod.exports.html, /class="ui-card"/);
+  assert.match(mod.exports.html, /导出已归档记录/);
+  assert.match(mod.exports.html, /导入记录/);
+  assert.match(mod.exports.html, /id="record-import-root" class="mono-input"/);
+  assert.match(mod.exports.html, /class="preview-table"/);
+  // The action bars are one left-aligned row, not three spread-out buttons.
+  assert.doesNotMatch(mod.exports.html, /batch-form-options/);
+  // A failed preview must not render in the success color.
+  assert.match(mod.exports.failureHtml, /settings-message settings-message-error/);
+});

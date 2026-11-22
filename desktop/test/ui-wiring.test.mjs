@@ -741,3 +741,167 @@ test("saving proxy or transfer backend refreshes the Extension snapshot", () => 
   assert.match(mainSource, /save_network_settings[\s\S]*?void refreshExtension\(\)/);
   assert.match(mainSource, /set_use_aria2[\s\S]*?void refreshExtension\(\)/);
 });
+
+// --- 2026-11-22 UI consistency and polish (CROSS_PLATFORM_CHANGE_REQUIRED) ---
+
+test("form controls share one visual contract, including textareas", () => {
+  // Textareas had no rule at all: native `#767676` border, sharp corners and no
+  // padding, which made the record-import and argument editors look broken.
+  const textarea = styleSource.match(/^\.settings-field textarea \{[^}]*\}/m)?.[0] ?? "";
+  assert.match(textarea, /border-radius: 7px/);
+  assert.match(textarea, /padding: 10px/);
+  assert.match(textarea, /var\(--font-mono\)/);
+  assert.match(textarea, /resize: vertical/);
+  assert.match(styleSource, /\.settings-field input, \.settings-field select, \.settings-field textarea \{[^}]*border-radius: 7px/);
+  // Native `<select>` arrows differ per WebView2 build and ignore control padding.
+  const select = styleSource.match(/\.settings-field select, \.logs-toolbar select \{[^}]*\}/)?.[0] ?? "";
+  assert.match(select, /appearance: none/);
+  assert.match(select, /background-image: url\("data:image\/svg\+xml/);
+  assert.match(select, /background-position: right 10px center/);
+});
+
+test("the page scroller is the only scroll container and stays subtle", () => {
+  // The document scrolled behind `.main-panel`, producing two scrollbars.
+  assert.match(styleSource, /html, body, #root \{ height: 100%; \}/);
+  assert.match(styleSource, /body \{[^}]*overflow: hidden/);
+  const panel = styleSource.match(/\.main-panel \{[^}]*\}/)?.[0] ?? "";
+  assert.match(panel, /background: var\(--surface-subtle\)/);
+  assert.match(panel, /scrollbar-width: thin/);
+  assert.match(styleSource, /\.main-panel::-webkit-scrollbar[^{]*\{ width: 10px/);
+});
+
+test("disabled and destructive buttons are visually distinct", () => {
+  const disabled = styleSource.match(/\.ui-button:disabled \{[^}]*\}/)?.[0] ?? "";
+  assert.match(disabled, /background: var\(--surface-muted\)/);
+  assert.doesNotMatch(disabled, /opacity: \.5/);
+  assert.match(styleSource, /\.ui-button-destructive \{[^}]*color: var\(--danger\)/);
+  // The token existed in the Button map but had no styling at all.
+  const telegram = readFileSync(new URL("../src/components/telegram-settings.jsx", import.meta.url), "utf8");
+  assert.match(telegram, /variant="destructive"[\s\S]{0,160}?>删除凭据</);
+});
+
+test("toggles use the brand accent and a softened unchecked track", () => {
+  const track = styleSource.match(/\.ui-toggle-field > input\.ui-toggle-input \{[^}]*\}/)?.[0] ?? "";
+  assert.match(track, /background: var\(--surface-hover\)/);
+  assert.doesNotMatch(track, /background: var\(--foreground-muted\)/);
+  const checked = styleSource.match(/\.ui-toggle-field > input\.ui-toggle-input:checked \{[^}]*\}/)?.[0] ?? "";
+  assert.match(checked, /background: var\(--accent\)/);
+  assert.doesNotMatch(checked, /var\(--success\)/);
+  assert.match(styleSource, /--accent: #2e6f59/);
+});
+
+test("collapsible settings panels are cards", () => {
+  const panel = styleSource.match(/\.settings-panel \{[^}]*\}/)?.[0] ?? "";
+  assert.match(panel, /border: 1px solid var\(--border\)/);
+  assert.match(panel, /border-radius: 10px/);
+  assert.match(panel, /background: var\(--surface\)/);
+});
+
+
+
+test("dashboard keeps a compact jobs action and a defined detail type scale", () => {
+  const dashboard = readFileSync(new URL("../src/pages/dashboard-page.jsx", import.meta.url), "utf8");
+  // The outline button was stretched to the full card width by the column flex.
+  assert.match(dashboard, /className="button-row jobs-footer"><Button variant="outline" onClick=\{onShowAllJobs\}>/);
+  const footer = styleSource.match(/\.jobs-content > \.jobs-footer \{[^}]*\}/)?.[0] ?? "";
+  assert.match(footer, /align-self: flex-start/);
+  // `.dashboard-detail` had no rule, so it inherited the 16px body size.
+  const detail = styleSource.match(/\.dashboard-detail \{[^}]*\}/)?.[0] ?? "";
+  assert.match(detail, /font-size: 12px/);
+  assert.match(detail, /color: var\(--foreground-muted\)/);
+});
+
+test("metric accents stay neutral at zero and the runtime rows are aligned", () => {
+  const dashboard = readFileSync(new URL("../src/pages/dashboard-page.jsx", import.meta.url), "utf8");
+  const batches = readFileSync(new URL("../src/pages/batches-page.jsx", import.meta.url), "utf8");
+  // A green "0" or a red "0" claims a state that has not happened.
+  assert.doesNotMatch(dashboard, /accent="green"/);
+  assert.doesNotMatch(dashboard, /accent="red"/);
+  assert.doesNotMatch(batches, /accent="green"/);
+  assert.doesNotMatch(batches, /accent="red"/);
+  assert.match(dashboard, /accent=\{!initialLoad && metrics\.completed > 0 \? "green" : "default"\}/);
+  assert.match(dashboard, /accent=\{!initialLoad && metrics\.failed > 0 \? "red" : "default"\}/);
+  // Component rows share one dot/name/state column so the names line up.
+  assert.match(dashboard, /className="dashboard-component-list"/);
+  assert.match(dashboard, /className="dashboard-component-name">/);
+  assert.match(styleSource, /\.dashboard-component-link \{[^}]*grid-template-columns: 7px minmax\(0, 1fr\) auto/);
+});
+
+test("jobs page hides single-page pagination and keeps refresh in the page header", () => {
+  assert.match(jobsSource, /\{pageCount > 1 && <div className="button-row">/);
+  assert.match(jobsSource, /action=\{<Button variant="outline" size="sm" onClick=\{refreshDownloadPage\}/);
+  // The old in-card ghost refresh sat beside the section title.
+  assert.doesNotMatch(jobsSource, /onClick=\{refreshDownloadPage\}>/);
+});
+
+test("record import uses cards, mono paths and a secondary export hierarchy", () => {
+  const preview = readFileSync(new URL("../src/pages/preview-accept-page.jsx", import.meta.url), "utf8");
+  assert.match(preview, /import \{ Card, CardContent, CardDescription, CardHeader, CardTitle \} from "\.\.\/components\/ui\/card"/);
+  assert.match(preview, /<CardTitle>导出已归档记录<\/CardTitle>/);
+  assert.match(preview, /<CardTitle>导入记录<\/CardTitle>/);
+  assert.match(preview, /id="record-import-root"[\s\S]{0,40}className="mono-input"/);
+  // Secondary exports are outline; only 接受导入 keeps the primary fill.
+  assert.match(preview, /variant="outline" size="sm" disabled=\{exportDisabled\} onClick=\{\(\) => exportRecords\("json"\)\}>导出 JSON/);
+  assert.match(preview, /disabled=\{acceptBusy \|\| previewBusy \|\| !previewResult \|\| selected\.length === 0\}/);
+  // `.batch-form-options` split the actions across the row.
+  assert.doesNotMatch(preview, /batch-form-options/);
+  assert.match(styleSource, /\.preview-table \{ width: 100%; border-collapse: collapse/);
+});
+
+test("status messages classify failures instead of always rendering green", async () => {
+  const { statusMessageClass } = await import("../src/lib/ui-state.js");
+  assert.equal(statusMessageClass("已保存"), "settings-message");
+  for (const failure of ["参数设置加载失败：…", "保存失败：…", "连接超时", "冲突，未提交", "回滚：2 条失败", "操作未完成"]) {
+    assert.equal(statusMessageClass(failure), "settings-message settings-message-error", failure);
+  }
+  // The download config page used `.settings-message` for every message, so a
+  // rejected JSON argument list rendered in the success color.
+  assert.match(configSource, /outputSettingsMessage && <p className=\{statusMessageClass\(outputSettingsMessage\)\}/);
+  assert.match(configSource, /downloaderSettingsMessage && <p className=\{statusMessageClass\(downloaderSettingsMessage\)\}/);
+  assert.match(configSource, /exchangeMessage && <p className=\{statusMessageClass\(exchangeMessage\)\}/);
+  assert.match(configSource, /useAria2Message && <p className=\{statusMessageClass\(useAria2Message\)\}/);
+});
+
+test("download config groups its panels and keeps action rows left-aligned", () => {
+  // The exchange actions were spread to both edges by `.batch-form-options`.
+  assert.match(configSource, /<div className="button-row">\s*<Button size="sm" variant="outline" disabled=\{exchangeBusy\} onClick=\{exportExchange\}>/);
+  assert.match(configSource, /<div className="settings-layout">/);
+  // The aria2 refresh moved out from beside the collapse chevron.
+  assert.doesNotMatch(configSource, /actions=\{<Button variant="ghost" size="icon" aria-label="检测 aria2"/);
+  assert.match(configSource, /className="aria2-refresh"/);
+  assert.doesNotMatch(styleSource, /\.aria2-download-button \{ margin-left: auto; \}/);
+});
+
+test("Bootstrap and Telegram statuses carry semantic framing", () => {
+  const connection = readFileSync(new URL("../src/components/connection-status.jsx", import.meta.url), "utf8");
+  // A ready catalog kept the dashed "missing" border.
+  assert.match(connection, /className=\{`dependency-status\$\{ready \? "" : " dependency-missing"\}`\}/);
+  assert.match(connection, /catalog <code>\{bootstrap\.catalog_version\}<\/code>/);
+  const base = styleSource.match(/\.dependency-status \{[^}]*\}/)?.[0] ?? "";
+  assert.match(base, /border: 1px solid var\(--border\)/);
+  assert.match(styleSource, /\.dependency-status\.dependency-missing \{[^}]*border-style: dashed/);
+  const telegram = readFileSync(new URL("../src/components/telegram-settings.jsx", import.meta.url), "utf8");
+  assert.match(telegram, /data-tone=\{projection\.provider_available \? "ok" : "warn"\}/);
+  assert.match(telegram, /className="service-dot"/);
+  assert.match(styleSource, /\.telegram-service-status span\[data-tone="ok"\] strong \{ color: var\(--success\)/);
+});
+
+test("the nine Extension diagnostics render as a grid, not a joined sentence", () => {
+  assert.match(settingsSource, /连接诊断计数（历史累计）<\/span><dl>/);
+  for (const label of ["接受", "握手失败", "认证读取失败", "收到认证", "认证成功", "认证失败", "认证响应失败", "认证前关闭", "认证后关闭"]) {
+    assert.ok(settingsSource.includes(`["${label}"`), `diagnostic ${label} is a grid cell`);
+  }
+  assert.doesNotMatch(settingsSource, /· 认证后关闭/);
+  const grid = styleSource.match(/\.extension-websocket-diagnostics dl \{[^}]*\}/)?.[0] ?? "";
+  assert.match(grid, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(styleSource, /\.extension-websocket-diagnostics dd \{[^}]*tabular-nums/);
+});
+
+test("proxy disclosure and URL fields share the stroke-icon and mono conventions", () => {
+  // The native <summary> triangle is a filled ▶; `.extension-guide` already hid it.
+  assert.match(styleSource, /\.proxy-system-details > summary \{ display: flex; align-items: center; gap: 8px; list-style: none; \}/);
+  assert.match(styleSource, /\.proxy-system-details > summary::after, \.extension-guide summary::after/);
+  assert.match(settingsSource, /id="proxy-value" className="mono-input"/);
+  assert.match(settingsSource, /id="proxy-diagnose-url" className="mono-input"/);
+  assert.match(settingsSource, /<details className="proxy-system-details">/);
+});

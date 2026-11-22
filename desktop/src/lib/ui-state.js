@@ -7,6 +7,18 @@ export function displayFileName(fullPath) {
   return parts.length ? parts[parts.length - 1] : String(fullPath);
 }
 
+/**
+ * Classify a user-facing status message so a failure is never painted in the
+ * success color. Pages used to test for one literal substring each, so
+ * "超时" or "冲突" still rendered green.
+ */
+export function statusMessageClass(message) {
+  const text = String(message ?? "");
+  return /(失败|错误|未完成|不可用|超时|冲突|无法|取消|回滚|拒绝)/.test(text)
+    ? "settings-message settings-message-error"
+    : "settings-message";
+}
+
 export function extensionConnectionLabel(connection) {
   const labels = {
     connected: "浏览器已连接",
@@ -153,17 +165,12 @@ export function proxyCoverageText(settings) {
   if (!settings || !settings.system_proxy_note) {
     return "";
   }
-  const suffix = settings.system_proxy_supported
-    ? "支持按 URL 解析 PAC 与 WPAD。"
-    : "暂不支持 PAC/WPAD 的按 URL 解析。";
-  // The backend note is an English sentence that already ends in a full stop.
-  // Concatenating it directly against the Chinese clause produced text such as
-  // "enabled.暂不支持…", so the clauses are kept apart.
-  return [
-    settings.system_proxy_note.trim(),
-    suffix,
-    "本地 aria2 RPC 与浏览器扩展连接始终直连。",
-  ].join(" ");
+  // The backend note is an English sentence. Concatenating it directly against a
+  // Chinese clause produced mixed-language prose such as "enabled.暂不支持…", so
+  // the page states the policy in Chinese and keeps the backend wording out of it.
+  return settings.system_proxy_supported
+    ? "系统模式按操作系统配置逐个 URL 解析，包括静态代理、PAC 与 WPAD；本地 aria2 RPC 与浏览器扩展连接始终直连。"
+    : "系统模式仅读取启动进程的代理环境变量，无法按 URL 解析 PAC 或 WPAD；本地 aria2 RPC 与浏览器扩展连接始终直连。";
 }
 
 /**
