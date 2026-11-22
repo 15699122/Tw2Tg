@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-22
 
+- Real `aria2c.exe` W1 containment & W6 two-item 403 refresh `62739ba`: verified packaged `aria2c.exe` (SHA-256 `be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`) together with current-source `target\release\xarchive-desktop.exe` (SHA-256 `21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`): (1) `windows_contained_aria2_supervisor_drains_and_authorizes_publication` **PASS 1/1 (350 filtered)** exercising both `spawn_silent_with_environment` and real `Aria2Supervisor::spawn_windows_contained_owned` + IOCP `shutdown()` + `PublicationOwner::authorize`; (2) uncommitted `crates/xarchive-download/tests/windows_real_aria2.rs` two-item 403 refresh experiment **PASS 1/1** (`GET /first`, `GET /expired` 403, `GET /first` re-downloaded on refresh, `GET /fresh`), kept uncommitted pending Cross-platform Owner confirmation of refresh semantics. See `## Cross-platform Owner Tasks` below and [history](../validation/windows-validation-history.md).
+
 - W3 `8d65866`: added real contained-writer maintenance-drain E2E tests (`windows_config_apply_e2e.rs`) using `xarchive-desktop.exe` (`21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`) + Python v2 Sidecar, verifying cancel (`Err(LockError::Contended)` + immediate `try_enter` reopen), timeout (`Err(LockError::Contended)` + reopen), drain completion (`MaintenanceGuard` after IOCP drain + release), and `Err(LockError::Io)` distinction (`windows_config_apply_e2e` **PASS 2/2**, `executor::` **PASS 91/91**, `commands::records` **PASS 13/13**). Shared-owner W3 preview-binding and executor-replacement failure contracts remain open (`CROSS_PLATFORM_CHANGE_REQUIRED`); `CROSS_PLATFORM_REVIEW_REQUIRED` for `scripts/architecture-baseline.json`. See [history](../validation/windows-validation-history.md).
 
 - Current-source Release Desktop build `9aaa83f`: rebuilt `target\release\xarchive-desktop.exe` (SHA-256 `21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`) cleanly from `9aaa83f` and re-ran W1/W5/W4 suites against the fresh keeper binary: `xarchive-workflow --lib` **PASS 24/24**, `xarchive-desktop --lib executor::` **PASS 89/89** (260 filtered; includes `windows_containment_e2e` 4/4, `windows_output_e2e` 3/3, `startup_cas_crash` 7/7, `production_factory_attempt_tests` 2/2), `xarchive-download --lib` **PASS 51/51**. Packaged GUI launch, real remote extraction, and W3/W6/W7 remain open; local `9aaa83f`..`5d8875c` commits stay unpushed pending review. See [history](../validation/windows-validation-history.md).
@@ -17,6 +19,23 @@
 ## Active Windows validation cursor — 2026-11-15
 
 - W2 `5d8875c`: fixed Windows destination lock identity in pure safe Rust for 1:1 `$UpCase` Unicode folding, missing-parent junction lock splitting, and 8.3 stem contention; `windows_native` **PASS 22/22 (3 ignored)**, `xarchive-workflow --lib` **PASS 21/21**, Desktop coordinator smoke **PASS 1/1**, `check-architecture.mjs` **PASS**. Three volume-8.3/env-var tests stay ignored; W1 descendant drain and Desktop publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for `tests/windows_native.rs` and `scripts/architecture-baseline.json`; see history.
+
+## Cross-platform Owner Tasks
+
+The following tasks belong to the **Cross-platform Owner** and require action/review on a Linux-native Git working tree after handoff from `codex/windows-validation-4ae46ed3` (`5d8875c`..`62739ba`):
+
+### `CROSS_PLATFORM_CHANGE_REQUIRED` (Shared Contract / Architecture Changes)
+
+1. **W3 Preview Revision Dual-Binding (`f52fa20` / `f15430a`)**: Bind the configuration exchange preview revision to both the candidate configuration document contents and the local persisted configuration so direct IPC (`apply_configuration_exchange`) rejects stale revisions when the document changed after preview. Windows Owner reruns IPC and GUI regressions afterward.
+2. **W3 Executor Replacement Failure Contract (`7cf82b4`)**: Fix the shared configuration/executor/transport failure contract so that when executor replacement fails after saving a transfer setting, the new value is neither left persisted nor reported as applied. Windows Owner reruns actual IPC afterward.
+3. **W1 Shared Recovery-Drain Generalization (`2717ead`)**: Review and formalize the cross-platform generalization of `VerifiedRecoveryDrain` and `RecoveryDrainBinding` in `crates/xarchive-workflow/src/{writer_lifecycle.rs, execution.rs, lib.rs}` so Linux cgroup and Windows Job Object recovery share one durable proof boundary.
+4. **W5 `InternalRenameV2` / Recovery Contract `2` Production Gate (`C1`)**: Keep `enable_v2` fail-closed on Windows until Cross-platform Owner completes C1 whole-lifecycle gate acceptance and lifts the shared gate.
+5. **W6 Offline Bundle Integration & Legacy Auto-Pairing Migration**: Define and implement the shared Offline Bundle assembly integration and legacy automatic-pairing migration path, with Windows Owner validating packaged Windows behavior.
+
+### `CROSS_PLATFORM_REVIEW_REQUIRED` (Shared Code, Tests, Baseline Review & Linux Re-validation)
+
+1. **Shared Crates, Tests & Architecture Baseline (`5d8875c`..`62739ba` + prior W3/W6/W7 commits)**: Review shared changes across `crates/xarchive-workflow`, `crates/xarchive-download`, `desktop/src-tauri/src/{archive.rs, executor*, production*}`, `scripts/architecture-baseline.json`, and prior shared packaging/UI/driver fixes; run `cargo test`, `node scripts/check-architecture.mjs`, and `node scripts/docs-audit.mjs` on Linux.
+2. **W6 Two-Item Media 403 Refresh Semantics (`crates/xarchive-download/tests/windows_real_aria2.rs`, uncommitted)**: Confirm whether re-downloading an already-completed first item (`GET /first` issued before `/expired` 403 and again after URL refresh) matches the intended shared `Aria2TransferDriver` retry contract or whether completed items should be skipped across refresh retries.
 
 - W6 `40d0fb6`: fixed shared transfer driver skipping unvisited pending downloads on an earlier item's failure; four mocked failure paths now request cancellation for all pending IDs, driver module **PASS 8/8**, real single-item aria2 refresh **PASS scoped**. Cancellation completion and W1 drain remain unproven; `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 

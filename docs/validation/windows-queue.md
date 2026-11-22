@@ -1,6 +1,8 @@
 ## Current Windows queue — 2026-11-15
 
-Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md). See [Current Platform Handoff — Cross-platform Owner Tasks](../status/platform-handoff.md#cross-platform-owner-tasks) for the explicit Cross-platform Owner work list.
+
+Real `aria2c.exe` W1 + W6 `62739ba`: verified packaged `aria2c.exe` (`be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`) with `xarchive-desktop.exe` (`21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`): `windows_contained_aria2_supervisor_drains_and_authorizes_publication` **PASS 1/1 (350 filtered)**; uncommitted `crates/xarchive-download/tests/windows_real_aria2.rs` two-item 403 refresh experiment **PASS 1/1** (re-downloading `/first` on refresh; kept uncommitted for Cross-platform Owner `CROSS_PLATFORM_REVIEW_REQUIRED` semantics check). See history.
 
 W3 `8d65866`: real contained-writer maintenance-drain E2E (`desktop/src-tauri/src/executor/tests/windows_config_apply_e2e.rs`, `xarchive-desktop.exe` SHA-256 `21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`) verified cancel, timeout, `LockError::Io` distinction, IOCP drain completion, and admission reopen; `windows_config_apply_e2e` **PASS 2/2**, `executor::` **PASS 91/91**, `commands::records` **PASS 13/13**. Shared-owner W3 preview-binding and executor-replacement contracts remain open (`CROSS_PLATFORM_CHANGE_REQUIRED`); `CROSS_PLATFORM_REVIEW_REQUIRED` for `scripts/architecture-baseline.json`. See history.
 
