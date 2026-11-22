@@ -15,6 +15,8 @@ mod startup_cas_crash;
 mod state_transitions;
 mod submission_dedup;
 #[cfg(windows)]
+mod windows_config_apply_e2e;
+#[cfg(windows)]
 mod windows_containment_e2e;
 #[cfg(windows)]
 mod windows_output_e2e;

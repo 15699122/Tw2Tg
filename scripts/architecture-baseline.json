@@ -898,8 +898,8 @@
     },
     "desktop/src-tauri/src/executor/tests/mod.rs": {
       "category": "rust-desktop",
-      "lines": 828,
-      "sha256": "3fa9427f226b17e8f57d809d88ba0e2eaf9b1016bf84342a53964003775b7f3f"
+      "lines": 830,
+      "sha256": "c761b4a8e445d06457e4fb98c7b41b067500f85f2beff9a7c77691edc804b50c"
     },
     "desktop/src-tauri/src/executor/tests/persistence_spec.rs": {
       "category": "rust-desktop",
@@ -925,6 +925,11 @@
       "category": "rust-desktop",
       "lines": 135,
       "sha256": "e219876fa6b2b97c829f251e257290f61e677dbeb77e7096c155618588dc979a"
+    },
+    "desktop/src-tauri/src/executor/tests/windows_config_apply_e2e.rs": {
+      "category": "rust-desktop",
+      "lines": 199,
+      "sha256": "ab55e8872422fe1bfe6e87e6eedf05c5aa5fbf2d7526e27d81dc21073bb16015"
     },
     "desktop/src-tauri/src/executor/tests/windows_containment_e2e.rs": {
       "category": "rust-desktop",
