@@ -14,6 +14,8 @@ mod scheduling_cancel_shutdown;
 mod startup_cas_crash;
 mod state_transitions;
 mod submission_dedup;
+#[cfg(windows)]
+mod windows_containment_e2e;
 
 fn request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
     ArchiveJobRequest {

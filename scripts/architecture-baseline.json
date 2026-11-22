@@ -848,8 +848,8 @@
     },
     "desktop/src-tauri/src/executor/containment.rs": {
       "category": "rust-desktop",
-      "lines": 386,
-      "sha256": "47819bb3718d9ea23ec32c174d13825e1563cda4da687bd2c193acc35ebaded2"
+      "lines": 392,
+      "sha256": "2c6bcb3db75fe0105bd5c1b1432e6d2b7bbe9309f0e8d25a513a1e917c8e0c39"
     },
     "desktop/src-tauri/src/executor/contracts.rs": {
       "category": "rust-desktop",
@@ -858,8 +858,8 @@
     },
     "desktop/src-tauri/src/executor/factory.rs": {
       "category": "rust-desktop",
-      "lines": 486,
-      "sha256": "65fa2a7b07b1a2cfeb937f3a3732d4348587b0497e2e929c10b5907b1b7c3c3c"
+      "lines": 498,
+      "sha256": "f5285c3026954b86f0259f8fe44cd0c7c2d54cb4ecb9262713e8edff1ba7ffbd"
     },
     "desktop/src-tauri/src/executor/recovery.rs": {
       "category": "rust-desktop",
@@ -898,8 +898,8 @@
     },
     "desktop/src-tauri/src/executor/tests/mod.rs": {
       "category": "rust-desktop",
-      "lines": 824,
-      "sha256": "1da1c90263d2299f252b3a8c7312427aec461d8871bd1e06286ac83d5879df0b"
+      "lines": 826,
+      "sha256": "e1532e5636e51ba269f3d6ca0ca5a58a2b4ddbbcba26180d07918613f474ba46"
     },
     "desktop/src-tauri/src/executor/tests/persistence_spec.rs": {
       "category": "rust-desktop",
@@ -925,6 +925,11 @@
       "category": "rust-desktop",
       "lines": 135,
       "sha256": "e219876fa6b2b97c829f251e257290f61e677dbeb77e7096c155618588dc979a"
+    },
+    "desktop/src-tauri/src/executor/tests/windows_containment_e2e.rs": {
+      "category": "rust-desktop",
+      "lines": 360,
+      "sha256": "50e0bd2a0c9130caaf09b60f1cb7637e30297f74a1d9bbda0475ce23d2bf68f6"
     },
     "desktop/src-tauri/src/executor/traits.rs": {
       "category": "rust-desktop",
@@ -1408,8 +1413,8 @@
     },
     "crates/xarchive-workflow/src/windows_containment.rs": {
       "category": "rust-library",
-      "lines": 1382,
-      "sha256": "50feec6b3ce84c55adee1cfa2ff75be87bc05a992b4686c9c14c1ce67243815f"
+      "lines": 1395,
+      "sha256": "475eb6026dad10c51959280480ec08786c9ff77a84b36dc6fdac8f6422608d47"
     },
     "crates/xarchive-win-job-iocp/src/lib.rs": {
       "category": "rust-library",

@@ -168,6 +168,7 @@ pub struct WindowsWriterJob {
     drained: bool,
     iocp: Option<xarchive_win_job_iocp::JobCompletionPort>,
     keeper: Option<process::Information>,
+    keeper_executable: Option<PathBuf>,
     writer: Option<process::Information>,
     production_registration: Option<(
         std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
@@ -239,6 +240,7 @@ impl WindowsWriterJob {
             drained: false,
             iocp: None,
             keeper: None,
+            keeper_executable: None,
             writer: None,
             production_registration: None,
         })
@@ -258,6 +260,7 @@ impl WindowsWriterJob {
                 drained: false,
                 iocp: None,
                 keeper: None,
+                keeper_executable: None,
                 writer: None,
                 production_registration: None,
             })),
@@ -290,10 +293,20 @@ impl WindowsWriterJob {
         self.production_registration = Some((state, role));
     }
 
+    /// Override the keeper executable path (used by test binaries whose
+    /// `current_exe()` is the test runner rather than `xarchive-desktop.exe`).
+    pub fn with_keeper_executable(mut self, executable: PathBuf) -> Self {
+        self.keeper_executable = Some(executable);
+        self
+    }
+
     /// Start the keeper mode of the current Desktop executable.
     pub fn start_desktop_keeper(&mut self) -> io::Result<()> {
         self.start_keeper_under_admission(|job| {
-            let executable = std::env::current_exe()?;
+            let executable = match job.keeper_executable.clone() {
+                Some(executable) => executable,
+                None => std::env::current_exe()?,
+            };
             job.keeper = Some(job.start_keeper(&executable, &["--xarchive-writer-keeper"])?);
             Ok(())
         })

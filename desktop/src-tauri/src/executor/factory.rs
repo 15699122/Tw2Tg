@@ -33,6 +33,8 @@ pub struct ProductionExecutionFactory {
     config: ExecutorConfig,
     #[cfg(target_os = "linux")]
     containment: Option<LinuxExecutionContainment>,
+    #[cfg(all(test, windows))]
+    keeper_executable: Option<std::path::PathBuf>,
 }
 
 fn decode_job_execution_spec(
@@ -51,7 +53,15 @@ impl ProductionExecutionFactory {
             config,
             #[cfg(target_os = "linux")]
             containment: None,
+            #[cfg(all(test, windows))]
+            keeper_executable: None,
         }
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn with_windows_keeper_executable(mut self, executable: std::path::PathBuf) -> Self {
+        self.keeper_executable = Some(executable);
+        self
     }
 
     #[cfg(target_os = "linux")]
@@ -236,6 +246,8 @@ impl ProductionExecutionFactory {
                 record_root,
                 workspace: self.config.staging_root.clone(),
                 attempt: identity.clone(),
+                #[cfg(test)]
+                keeper_executable: self.keeper_executable.clone(),
             }
         };
         #[cfg(target_os = "linux")]

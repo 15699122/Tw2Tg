@@ -199,6 +199,8 @@ pub struct WindowsAttemptWriterDomain {
     pub record_root: PathBuf,
     pub workspace: PathBuf,
     pub attempt: AttemptIdentity,
+    #[cfg(all(test, windows))]
+    pub keeper_executable: Option<PathBuf>,
 }
 
 /// Drain every recorded writer domain from crashed predecessor attempts on Windows.
@@ -237,6 +239,10 @@ pub(crate) fn recover_and_create_windows_writer_job(
     use xarchive_workflow::windows_containment::{WindowsWriterIdentity, WindowsWriterJob};
     let identity = WindowsWriterIdentity::new(&domain.workspace, &domain.attempt, role)?;
     let mut owner = WindowsWriterJob::create_recorded(&domain.record_root, identity)?;
+    #[cfg(test)]
+    if let Some(keeper) = &domain.keeper_executable {
+        owner = owner.with_keeper_executable(keeper.clone());
+    }
     if let Some(registration) = &domain.registration {
         registration.register_windows(&mut owner)?;
     }
