@@ -1,14 +1,36 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-22, cross-platform follow-up)
+## Resume summary — authoritative cursor (2026-11-22, Windows validation at 7450451b)
 
 > Start here. Everything below this section is retained history and its state
 > claims are not current.
 
+### Windows validation cursor & branch reconciliation (2026-11-22)
+
+- Owner: Windows Platform Owner → Cross-platform Owner (after reconciling local branch history).
+- Branch: **`codex/windows-validation-7450451b`** (local validation branch).
+- Input handoff revision: **`7450451be0e8be07eeffbb05c97fef2a05dd5a92`** (`7450451b`, containing cross-platform implementation `e9a0c8789de9959756ac4879e0605f7a8c3195bc`, branched from `35ba3479`).
+- Preserved unpushed Windows local history: **`backup/windows-local-8eeb709`** / **`codex/windows-validation-4ae46ed3`** at **`8eeb709b93f4df82578ef4aaa9ea2e2feee0d383`** (30 local-only commits `540ce28..8eeb709` after `35ba3479`, covering W1/W2/W3/W4/W5 work). **Reconciliation required**: these 30 local Windows commits were not on `origin/codex/windows-validation-4ae46ed3` (`35ba3479`) and must be reconciled with `7450451b` via Git.
+- Built Windows Release artifacts at `7450451b`:
+  - Standard Release `xarchive-desktop.exe`: SHA-256 `37e98842a30ad1b9b0e463c5ce23e40a05391c3c4304eaf1f53c36e7748dcbb0` (**PASS**).
+  - WDIO dev-channel Release `xarchive-desktop.exe` (`--features wdio-e2e`): SHA-256 `54682208b9c122e4eafbd327c1dc00b875d22778f5cfa8f0af11ae5e299aac08` (**PASS**).
+  - Packaged `aria2c.exe` (`target\w6-aria-companion-21ae545\source\aria2c.exe`): SHA-256 `be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`.
+- Completed Windows validation on `7450451b`:
+  - W3 Rust unit suites: `config::tests::exchange` **PASS 2/2**, `commands::records` **PASS 13/13**, `commands::settings` **PASS 11/11**.
+  - W3 WebView2 IPC regressions (WDIO Release `54682208...`, `msedgedriver.exe` 153.0.4234.46 / WebView2 153.0.4234.48, isolated roots, unsandboxed loopback): `configuration-preview-binding.e2e.mjs` **PASS 1/1 (165ms)**; `set_use_aria2` replacement-failure fixture **PASS 1/1 (479ms)** (`reported: false`, `bytesUnchanged: true`); `transfer-save-failure.e2e.mjs` **PASS 1/1 (232ms)** (`before: false`, `after: false`, `errorReturned: true`, `persistedUnchanged: true`).
+  - W6 non-GUI & real `aria2c.exe` dual-media 403 refresh: `offline-bundle-package.test.mjs` **PASS 7/7**; `xarchive-desktop --lib components` **PASS 6/6**; `extension` Node tests **PASS 57/57**; `xarchive-download --lib` **PASS 52/52**; real `aria2c.exe` dual-media 403 refresh (`windows_real_aria2`, unsandboxed loopback, temporary test file removed afterwards) **PASS 1/1 (2.68s)** observing one `GET` per media item (`GET /first` -> `GET /expired` 403 -> `GET /fresh`).
+- Remaining Manual Validation Queue / Windows-owned items: real Edge/Chrome legacy-to-automatic pairing registration and failure path; real 6-component Offline Bundle assembly/startup/activation on Windows; W7 GUI/DPI matrix, held-busy/moved-focus checks, and stopped proxy session `268c3d0` (PID `66204`). See [Windows queue](../validation/windows-queue.md) and [Windows validation history](../validation/windows-validation-history.md).
+
+---
+
+## Previous Cursor — 2026-11-22, cross-platform follow-up
+
+> Retained below from `7450451b` for traceability.
+
 ### Handoff identity check (recorded before any work)
 
 The returning message named `8eeb709b93f4df82578ef4aaa9ea2e2feee0d383` as the Windows
-handoff commit, with `2717ead` and `5d8875c` as earlier Windows commits. **None of those
+hand-off commit, with `2717ead` and `5d8875c` as earlier Windows commits. **None of those
 objects exist in the configured remote or in any fetched ref.** The remote branch
 `codex/windows-validation-4ae46ed3` was at `35ba3479` (370 commits after `4ae46ed3`,
 dated 2026-11-21), and the branch's `docs/status/platform-handoff.md` carried the

@@ -1,5 +1,28 @@
 # Windows Validation History
 
+## Windows validation batch at 7450451b (W3 IPC & W6 non-GUI / aria2) — 2026-11-22
+
+At input revision `7450451be0e8be07eeffbb05c97fef2a05dd5a92` (`7450451b`, containing cross-platform implementation `e9a0c8789de9959756ac4879e0605f7a8c3195bc`, branched from `35ba3479`) on local branch `codex/windows-validation-7450451b` (with prior unpushed local Windows commits `540ce28..8eeb709` preserved separately on `backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` at `8eeb709b93f4df82578ef4aaa9ea2e2feee0d383` for Git reconciliation):
+
+- **Builds**:
+  - Standard Windows Release `xarchive-desktop.exe`: **PASS**, SHA-256 `37e98842a30ad1b9b0e463c5ce23e40a05391c3c4304eaf1f53c36e7748dcbb0`.
+  - WDIO dev-channel Windows Release `xarchive-desktop.exe` (`--features wdio-e2e`): **PASS**, SHA-256 `54682208b9c122e4eafbd327c1dc00b875d22778f5cfa8f0af11ae5e299aac08`.
+- **W3 Rust unit tests**:
+  - `cargo test -p xarchive-desktop --lib config::tests::exchange --quiet`: **PASS 2/2** (339 filtered).
+  - `cargo test -p xarchive-desktop --lib commands::records --quiet`: **PASS 13/13** (328 filtered).
+  - `cargo test -p xarchive-desktop --lib commands::settings --quiet`: **PASS 11/11** (330 filtered).
+- **W3 WebView2 IPC regressions** (against WDIO Release `54682208...`, `msedgedriver.exe` 153.0.4234.46 / WebView2 153.0.4234.48, isolated portable roots, unsandboxed loopback):
+  - `desktop/e2e/specs/configuration-preview-binding.e2e.mjs`: **PASS 1/1** (`165ms`).
+  - Transfer executor replacement failure fixture (malformed `download.downloader_arguments` in `set_use_aria2`): **PASS 1/1** (`479ms`, `reported: false`, `bytesUnchanged: true`).
+  - `desktop/e2e/specs/transfer-save-failure.e2e.mjs`: **PASS 1/1** (`232ms`, `before: false`, `after: false`, `errorReturned: true`, `persistedUnchanged: true`).
+- **W6 non-GUI & real `aria2c.exe` dual-media 403 refresh**:
+  - `node --test desktop/test/offline-bundle-package.test.mjs`: **PASS 7/7**.
+  - `cargo test -p xarchive-desktop --lib components --quiet`: **PASS 6/6** (335 filtered).
+  - `npm --prefix extension test`: **PASS 57/57** (0 fail, 0 skip).
+  - `cargo test -p xarchive-download --lib --quiet`: **PASS 52/52**.
+  - `cargo test -p xarchive-download --test windows_real_aria2 -- --ignored --nocapture` against packaged `aria2c.exe` (`target\w6-aria-companion-21ae545\source\aria2c.exe`, SHA-256 `be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`, unsandboxed loopback; temporary test file removed from working tree afterwards): **PASS 1/1** (`2.68s`), observing one `GET` per media item (`GET /first` -> `GET /expired` 403 -> `GET /fresh`).
+- **Manual Validation Queue (open)**: real Edge/Chrome legacy-to-automatic pairing registration and failure path; real 6-component Offline Bundle assembly/startup/activation on Windows; W7 GUI/DPI/held-busy/moved-focus matrix and stopped proxy session `268c3d0` (PID `66204`).
+
 ## Manual proxy draft status — 2026-11-21
 
 At `268c3d0`, a separate isolated proxy save/restart fixture was prepared with a synthetic manual setting and the `9984615` executable. The user stopped desktop control with Escape before UI interaction; save and restart checks are **NOT_RUN**, with no product conclusion. A later read-only native process query found PID `66204` still matched the isolated executable (`target/w7-proxy-stop-268c3d0.{log,exit}`); no further UI action or automatic close was taken. The process state may change, so recheck before any later action.

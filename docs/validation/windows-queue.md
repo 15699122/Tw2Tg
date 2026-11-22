@@ -1,17 +1,23 @@
 ## Current Windows queue — 2026-11-22
 
-Owner: Windows Platform Owner. Source: `e9a0c878` (shared implementation) plus the handoff documentation commit on `codex/windows-validation-4ae46ed3`; the previous source `4ae46ed3` is retained below as history. Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b`. Input revision: `7450451be0e8be07eeffbb05c97fef2a05dd5a92` (`7450451b`, shared implementation `e9a0c878`, branched from `35ba3479`); the previous source `4ae46ed3` is retained below as history, and unpushed local Windows commits (`540ce28..8eeb709`) are preserved on `backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` for Git reconciliation. Results are recorded in [Windows validation history](windows-validation-history.md).
 
-Cross-platform follow-ups resolved at `e9a0c878` — Windows must re-run the matching rows before they can be closed:
+Windows validation outcomes at `7450451b`:
 
-- W3 `7cf82b4` executor replacement failure: the transfer choice is applied to the runtime before the durable write and restored on failure. Re-run the IPC fixture; the previous FAIL expectation is now a product assertion (`use_aria2` stays `false`, configuration bytes unchanged).
-- W3 preview binding (`f15430a`): the preview revision binds the document as well as the durable bytes. `configuration-preview-binding.e2e.mjs` must now observe the stale refusal and unchanged configuration/runtime.
-- W6 dual-media 403 refresh: a refresh retry downloads only the unfinished items. The real aria2 test must show one `GET` per media item instead of a second `GET` for the completed first item.
-- W6 Offline Bundle (`029c710`): assembly, manifest/catalog parity and package-catalog loading are implemented cross-platform. Assemble and validate the real artifact on Windows; versioned release inputs and signing remain Windows/CI-owned.
-- W6 legacy browser pairing: automatic migration keeps the legacy credential until a ticket authentication succeeds. Verify the migration and the failure path on real Edge/Chrome registrations.
-- W7 `96f0fa5` / `19dbc22`: the shared UI fix is unchanged by this batch; the held-busy and DPI checks in that row remain open.
+- W3 `7cf82b4` executor replacement failure: **PASS** — WDIO Release `54682208...` IPC fixture (`479ms`) returned the replacement/restore error while `get_app_status` stayed `reported: false` and persisted configuration remained `bytesUnchanged: true`; `commands::settings` **PASS 11/11**.
+- W3 preview binding (`f15430a`): **PASS** — WDIO Release `54682208...` `configuration-preview-binding.e2e.mjs` (**PASS 1/1**, `165ms`) observed stale refusal and unchanged configuration/runtime; `config::tests::exchange` **PASS 2/2**, `commands::records` **PASS 13/13**.
+- W3 `transfer-save-failure.e2e.mjs`: **PASS** — WDIO Release `54682208...` (**PASS 1/1**, `232ms`, `before: false`, `after: false`, `errorReturned: true`, `persistedUnchanged: true`).
+- W6 dual-media 403 refresh: **PASS** — real `aria2c.exe` (`be2099c2...`) `windows_real_aria2` (`2.68s`, unsandboxed loopback; temporary test file removed afterwards) observed one `GET` per media item (`GET /first` -> `GET /expired` 403 -> `GET /fresh`), and `xarchive-download --lib` **PASS 52/52**.
+- W6 Offline Bundle (`029c710`) & legacy browser pairing (non-GUI checks): `offline-bundle-package.test.mjs` **PASS 7/7**, `xarchive-desktop --lib components` **PASS 6/6**, `extension` Node tests **PASS 57/57**.
 
-`CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878`; this queue entry records their availability, not Windows acceptance.
+Manual Validation Queue (remaining open Windows items):
+
+- W6 Offline Bundle: assemble and validate the real 6-component artifact (layout, embedded-catalog parity, startup, activation) on Windows; versioned release inputs and signing remain Windows/CI-owned.
+- W6 legacy browser pairing: verify automatic migration (`legacy` -> `automatic`, credential kept until ticket auth succeeds) and failure path on real Edge/Chrome registrations.
+- W7 `96f0fa5` / `19dbc22` & GUI/DPI matrix: held-busy, user-moved-focus, and DPI checks remain open.
+- Branch reconciliation: reconcile the 30 unpushed Windows commits on `backup/windows-local-8eeb709` (`540ce28..8eeb709`) with `7450451b` via Git.
+
+`CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878`; this queue entry records Windows W3/W6 results at `7450451b`.
 
 W7 `268c3d0`: isolated proxy save/restart check **NOT_RUN**, user stopped desktop control before interaction. The isolated Desktop PID `66204` was present at a later read-only identity check; preserve the stopped session. See history and manual queue.
 
