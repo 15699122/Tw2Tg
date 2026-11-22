@@ -290,13 +290,21 @@ Browser/Native Host protocol version 与 Sidecar protocol version 分离，使�
 
 ## ADR-013：Core Bootstrap、embedded catalog 与 Extension 分发
 
-**状态：Linux scope 已实现；Bootstrap/release integration 仍为 `PLANNED`**
+**状态：Linux scope 已实现；Offline Bundle 装配与随包 catalog 加载已实现（2026-11-22）；真实 release inputs 与 Windows Bootstrap/activation 仍为 `PLANNED`**
 
 Core 初始发行物为单个 Desktop `.exe`，运行后管理 `config/`、`cache/`、`logs/`、`download/` 和 `components/`。U9 已实现 ComponentManager 的固定 catalog schema、版本/平台/架构、artifact、SHA-256、大小上限、布局、probe、license 和 protocol compatibility 校验，以及本地 atomic activation/rollback。真实 catalog 条目和下载地址要等 U11 release assets 定稿；不使用动态 `latest` 或未经签名的远程 manifest。
 
 Offline Bundle 预置相同 catalog 中的组件，不形成第二条业务路径。Extension 只通过版本化 Release ZIP 解压到固定目录并由用户开启浏览器开发者模式加载；不进入 Chrome Web Store、Microsoft Edge Add-ons 或自动浏览器安装流程。
 
 Signed Remote Component Catalog 是后续 TODO，必须具备 Ed25519 签名、公钥内置、防降级、撤销、key rotation、host allowlist、replay/tamper tests 和离线 embedded fallback 后才能评估实现。
+
+### 2026-11-22 follow-up（`e9a0c878`）：Offline Bundle 装配与随包 catalog
+
+Offline Bundle 的跨平台半边已实现。`desktop/scripts/offline-bundle-package.mjs` 的 `assembleOfflineBundle` 从实际文件按 `components.rs::tree_digest` 同一算法派生每个组件的 SHA-256 与 size（相对路径 UTF-8 排序、NUL 分隔、LE u64 长度），拒绝重叠 artifact、组件集合不完整和已存在的输出目录，用同一组件列表生成 `offline-bundle-manifest.json` 与 `components/catalog.json`（`max_size_bytes` 取精确 size，是 pinned artifact 的最紧上界），并在写完后回读校验 manifest、catalog 与实际字节三处一致。
+
+Rust 侧 `load_catalog_file` / `ComponentManager::from_package_catalog` 以 embedded catalog 的同一 `validate_catalog` 规则加载随包 catalog；文件存在但非法时 fail-closed，不退回空 catalog（否则会对宣称含组件的 bundle 报告"无需安装"）。
+
+仍未实现：真实版本化 release inputs、签名、Windows Bootstrap UI/activation 验收与 hosted release。不引入动态 `latest` 或未签名远程 manifest 的结论不变。
 
 ## ADR-014：Extension WebSocket 本地通道与安全迁移
 

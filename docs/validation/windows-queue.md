@@ -1,6 +1,17 @@
-## Current Windows queue — 2026-11-15
+## Current Windows queue — 2026-11-22
 
-Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner. Source: `e9a0c878` (shared implementation) plus the handoff documentation commit on `codex/windows-validation-4ae46ed3`; the previous source `4ae46ed3` is retained below as history. Results are recorded in [Windows validation history](windows-validation-history.md).
+
+Cross-platform follow-ups resolved at `e9a0c878` — Windows must re-run the matching rows before they can be closed:
+
+- W3 `7cf82b4` executor replacement failure: the transfer choice is applied to the runtime before the durable write and restored on failure. Re-run the IPC fixture; the previous FAIL expectation is now a product assertion (`use_aria2` stays `false`, configuration bytes unchanged).
+- W3 preview binding (`f15430a`): the preview revision binds the document as well as the durable bytes. `configuration-preview-binding.e2e.mjs` must now observe the stale refusal and unchanged configuration/runtime.
+- W6 dual-media 403 refresh: a refresh retry downloads only the unfinished items. The real aria2 test must show one `GET` per media item instead of a second `GET` for the completed first item.
+- W6 Offline Bundle (`029c710`): assembly, manifest/catalog parity and package-catalog loading are implemented cross-platform. Assemble and validate the real artifact on Windows; versioned release inputs and signing remain Windows/CI-owned.
+- W6 legacy browser pairing: automatic migration keeps the legacy credential until a ticket authentication succeeds. Verify the migration and the failure path on real Edge/Chrome registrations.
+- W7 `96f0fa5` / `19dbc22`: the shared UI fix is unchanged by this batch; the held-busy and DPI checks in that row remain open.
+
+`CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878`; this queue entry records their availability, not Windows acceptance.
 
 W7 `268c3d0`: isolated proxy save/restart check **NOT_RUN**, user stopped desktop control before interaction. The isolated Desktop PID `66204` was present at a later read-only identity check; preserve the stopped session. See history and manual queue.
 

@@ -1,5 +1,123 @@
 # Current Platform Handoff
 
+## Resume summary — authoritative cursor (2026-11-22, cross-platform follow-up)
+
+> Start here. Everything below this section is retained history and its state
+> claims are not current.
+
+### Handoff identity check (recorded before any work)
+
+The returning message named `8eeb709b93f4df82578ef4aaa9ea2e2feee0d383` as the Windows
+handoff commit, with `2717ead` and `5d8875c` as earlier Windows commits. **None of those
+objects exist in the configured remote or in any fetched ref.** The remote branch
+`codex/windows-validation-4ae46ed3` was at `35ba3479` (370 commits after `4ae46ed3`,
+dated 2026-11-21), and the branch's `docs/status/platform-handoff.md` carried the
+`Active Windows validation cursor — 2026-11-15` section rather than a 2026-11-22 cursor
+or a `Cross-platform Owner Tasks` section.
+
+Unpushed Windows local state is not a formal handoff (`AGENTS.md`), so this batch used
+the **remote tip** as its input revision; the shared commits the message named
+(`f52fa207`, `f15430a1`, `7cf82b46` and the W1/W6/W7 shared changes) are present there.
+The Windows Platform Owner must confirm whether the named commits were pushed to another
+remote or are still local. If they carry work that is not in `35ba3479`, they must be
+published through Git before the next handoff, and this batch's shared changes must be
+reconciled against them.
+
+### Cursor
+
+- Owner: Cross-platform Owner. Handoff state: **`READY_FOR_WINDOWS`**.
+- Branch: **`codex/windows-validation-4ae46ed3`**.
+- Cross-platform input revision: **`35ba3479`** (remote branch tip, verified to contain
+  `4ae46ed3` as an ancestor).
+- Cross-platform implementation revision: **`e9a0c878`**.
+- Handoff revision: the documentation commit after `e9a0c878`, i.e. the branch tip.
+  Resolve it with `git rev-parse codex/windows-validation-4ae46ed3`.
+- `WINDOWS_BLOCKING`: **none**. No cross-platform work in this batch depended on a
+  Windows result.
+
+### Cross-platform work completed (this batch)
+
+| Item | Change | Files |
+|---|---|---|
+| W3 preview binding (`f52fa20`/`f15430a`) | `ConfigurationExchange::preview` derives the commit revision from **the parsed document and the durable configuration bytes**, length-prefixed and domain-separated. A document edited after the preview mints a different revision, so `apply_configuration_exchange` refuses it as stale; a revision minted for an existing file no longer admits once the file is gone. | `desktop/src-tauri/src/config.rs`, `config/tests/exchange.rs`, `commands/records.rs` |
+| W3 executor replacement (`7cf82b46`) | `set_use_aria2` rebuilds the executor **before** the durable write (`apply_transfer_choice`) and restores the previous executor when either half fails. A replacement failure leaves the file and `get_app_status` on the previous value instead of the Windows-observed `use_aria2: true` plus an error. | `desktop/src-tauri/src/commands/settings.rs` |
+| W1 drain contract review | Reviewed `writer_lifecycle.rs`, `execution.rs`, `linux_containment.rs`, `windows_containment.rs`. The shared **consumer** boundary is one contract: attempt identity + workspace + operation token + the fixed `sidecar`/`aria2-0`/`aria2-1` role set, minted only by a platform adapter and validated against the live session and journal. The Linux cgroup adapter mints it. The Windows Job Object drain explicitly does **not** ("does not certify that every descendant handle has signalled"), and `authorize_*_recovery` is Linux-gated, so a Windows recovery returns `IncompleteDrain` (fail-closed). Conclusion: the boundary is genuinely shared on the validation side and deliberately unproven on the Windows minting side. No behaviour change; two collapsible-`if` sites and one test-module placement were linted. | `crates/xarchive-workflow/...` |
+| W5 `InternalRenameV2` gate (`C1`) | Verified and left fail-closed: `ExecutorRuntime::recover_startup` hardcodes `recover_startup_with_v2(false)`, `v2_enrollment` defaults to `false` in both `ExecutorConfig` and `ArchiveApplicationService`, and `startup_v2_missing_journal_remains_fail_closed` pins that a contract-2 job is never published. **Do not enable** until the Linux/Cross-platform C1 lifecycle gate is accepted. | unchanged |
+| W6 refresh retry semantics | Decided: re-downloading a completed item is **not** the intended contract. `TransferFailure` now carries the outcomes completed before it failed, and both refresh paths (`RefreshCoordinator`, production `transfer_with_one_refresh`) retry only `unfinished_plan(..)` and merge with `merge_outcomes(..)`. The second `GET` for an already-finished item is gone by construction. | `crates/xarchive-download/src/{driver,refresh,lib}.rs`, `desktop/src-tauri/src/production/transfer.rs` |
+| W6 legacy auto-pairing migration | Switching a stored `legacy` token to `automatic` no longer persists the mode change first. `TransportBridge.saveWebSocketSettings` applies it in memory, connects, and lets `WebSocketBridge.connect` perform the durable rewrite only after a ticket authentication succeeds; on failure it cancels the retry and restores the stored legacy credential. | `extension/src/background.js`, `extension/tests/browser-pairing.test.js` |
+| W6 Offline Bundle assembly | `assembleOfflineBundle` / `verifyOfflineBundle` / `createEmbeddedCatalog` derive every digest and size from the bytes on disk with the **same tree digest** `components.rs` verifies, refuse overlapping artifacts, incomplete component sets and an existing output root, write the bundle manifest and embedded catalog from one component list, and re-read the result. Runtime side: `load_catalog_file` + `ComponentManager::from_package_catalog` validate a package catalog with the embedded-catalog rules and fail closed on an invalid file. | `desktop/scripts/offline-bundle-package.mjs`, `desktop/test/offline-bundle-package.test.mjs`, `desktop/src-tauri/src/components.rs` |
+
+### Validation executed in this batch (Linux, cross-platform scope)
+
+| Check | Result |
+|---|---|
+| `cargo test -p xarchive-download -p xarchive-workflow --lib --offline` | **PASS** — download 54, workflow 49 |
+| `cargo test --workspace --offline` | **PASS** — desktop lib **375 / 0 / 15**, storage **181 / 0 / 0**, download 54, workflow 49, sidecar-supervisor 31, protocol 17, native-host 11, core 5, every other member green |
+| `node --test desktop/test/offline-bundle-package.test.mjs` | **PASS 7/7** (3 existing + tree digest, component description, assembly/verification, refusal cases) |
+| Desktop Node `npm test` | **PASS** — 261 tests, 258 pass, 3 Windows-only skip, 0 fail |
+| Extension Node `npm test` | **PASS 57/57** (the previously skipped legacy-migration test is enabled, plus a success-path test) |
+| `cargo fmt --all -- --check` | **PASS** |
+| `node scripts/check-architecture.mjs` | **PASS** — 283 files, 44 js/ts, 26 relative edges, **0 findings** (baseline resealed deliberately; the count deltas are this batch's reviewed change) |
+| `node scripts/docs-audit.mjs` | **PASS** |
+| `git diff --check` | **PASS** |
+| `cargo clippy` | **Scoped**: no finding in any file this batch changed. `-D warnings` does **not** pass workspace-wide: `xarchive-storage` (5), `xarchive-sidecar-supervisor`, `archive.rs`, `executor/*` and `production/transfer.rs` carry pre-existing warnings in files untouched by both this batch and the Windows batch. Recorded as a baseline condition, not introduced here, and not used to claim a PASS. |
+
+Not run, and not claimed: any Windows build, IPC, GUI, WebView2, packaging or bundle
+artifact acceptance; the real `windows_real_aria2.rs`; real browser pairing.
+
+### Windows work required
+
+1. **Re-run the W3 IPC regressions** against this revision: the preview-binding fixture
+   (`configuration-preview-binding.e2e.mjs`) must now fail closed on an edited document
+   carrying the earlier revision, and the transfer-replacement fixture (`set_use_aria2`
+   with a malformed `download.downloader_arguments`) must return the error while the
+   configuration file and `get_app_status` stay `false`.
+2. **Re-run `transfer-save-failure.e2e.mjs`**: the save-failure path now rebuilds the
+   executor before the failed write and restores it afterwards; the assertions are
+   unchanged, but the artifact must be rebuilt from this revision.
+3. **Re-run the real dual-media 403 refresh** (`windows_real_aria2.rs`, still uncommitted
+   on the Windows side): the expected observation changes from "second `GET` for the
+   first item" to "one `GET` per media item". Commit the test only after it passes in
+   that form.
+4. **Offline Bundle**: assemble a real six-component bundle with this revision's
+   `desktop/scripts/offline-bundle-package.mjs`, then validate layout, embedded-catalog
+   parity, startup and activation on Windows. Versioned release inputs, signing and the
+   hosted release remain Windows/CI-owned.
+5. **Legacy browser pairing**: verify the migration path (stored legacy token → automatic
+   bootstrap → token cleared only after authentication; a failed bootstrap keeps the
+   credential) on real Edge/Chrome registrations.
+6. **Unchanged Windows-owned items**: W2 junction/8.3 lock races, full desktop
+   installer/signing, real credentials and Telegram delivery, W7 WebView2/EdgeDriver
+   blocking and the GUI/DPI matrix, and the 2026-11-15 cursor items in the Windows queue.
+
+### Windows validation required
+
+The items above, plus every still-open row in
+[`docs/validation/windows-queue.md`](../validation/windows-queue.md). This batch adds no
+new Windows-owned implementation, so it opens no new manual step.
+
+### Known risks
+
+- `TransferFailure` gained a public `completed` field. Any Windows-side code constructing
+  it as a literal must add the field; the workspace compiles today, but
+  `windows_real_aria2.rs` lives outside Git.
+- The preview revision changed its derivation, so a revision minted before this batch is
+  not valid afterwards. That is intended: the old value did not bind the document.
+- `set_use_aria2` performs two executor rebuilds on the failing-save path (apply, then
+  restore). A restore that also fails is reported in the error text; the durable file and
+  the reported configuration still hold the previous value, but the runtime may need a
+  restart.
+- The Offline Bundle catalog uses the exact artifact size as `max_size_bytes`, the
+  tightest bound `components.rs` accepts for a pinned component. A component that must
+  grow in place needs a new catalog entry, not a larger limit.
+
+### Next owner
+
+Cross-platform Owner → Windows Platform Owner. Fetch the branch, check out its tip,
+confirm the revisions above, and start with the W3 IPC re-runs.
+
+
+
 - Pinned gallery yt-dlp licence packaging `PASS` scoped at `b572933`; other components, redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 ## Active Windows validation cursor — 2026-11-15

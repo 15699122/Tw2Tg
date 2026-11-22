@@ -130,6 +130,8 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 
 **验收：**正式 Git 产物下 Desktop 已运行和允许冷启动两个场景均能 bootstrap；注册缺失和启动失败可诊断。Linux 测试不替代本阶段验收。
 
+**共享迁移契约（2026-11-22，`e9a0c878`；Windows 验收未完成）：**旧版 `legacy` token 切换到 `automatic` 时，不再先落盘再连接：`TransportBridge.saveWebSocketSettings` 先在内存应用、执行 bootstrap + ticket 认证，只有认证成功才由 `WebSocketBridge.connect` 永久改写为 `automatic` 并清除 token；失败时取消重试并恢复已存储的 legacy 凭据。兼容矩阵由此明确：新 Extension + 旧 Desktop（bootstrap 未实现）或 Desktop 未运行都保留可用凭据并显示可诊断错误，不会静默降级为无票据连接；旧 Extension + 新 Desktop 走显式 legacy/diagnostic 模式。Linux 证据：Extension Node `57/57`，含失败保留与成功后清除两条用例。真实 Edge/Chrome 迁移仍待 Windows 验收。
+
 ### Phase 5 — UI、升级兼容与打包
 
 **Owner：共享状态语义由 Cross-platform Owner；Windows UI/注册/打包由 Windows Platform Owner。**
