@@ -47,13 +47,12 @@ fn drain_evidence(
     workspace: &Path,
 ) -> VerifiedRecoveryDrain {
     let root = unique_record_root();
-    let evidence = crate::linux_containment::LinuxContainment::recover_production_attempt(
+    crate::linux_containment::LinuxContainment::recover_production_attempt(
         &root,
         session.recovery_drain_binding(workspace),
         std::time::Duration::from_millis(10),
     )
-    .expect("empty fixed writer-role set is recovered");
-    evidence
+    .expect("empty fixed writer-role set is recovered")
 }
 
 fn journal<'a>(

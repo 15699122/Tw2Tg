@@ -107,6 +107,7 @@ pub(super) fn transfer_once(
             code: TransferFailureCode::Failed,
             message: error,
             aria2_error_code: None,
+            completed: Vec::new(),
         })
         .map_err(TransferAttemptFailure::diagnostic)?;
     let startup = match containment {
@@ -126,6 +127,7 @@ pub(super) fn transfer_once(
                     code: TransferFailureCode::Failed,
                     message: error.to_string(),
                     aria2_error_code: None,
+                    completed: Vec::new(),
                 })
             })?;
             Aria2Supervisor::spawn_contained_owned(
@@ -142,6 +144,7 @@ pub(super) fn transfer_once(
                 code: TransferFailureCode::Failed,
                 message: format!("aria2 startup failed: {error}"),
                 aria2_error_code: None,
+                completed: Vec::new(),
             })
         }),
     };
@@ -163,6 +166,7 @@ pub(super) fn transfer_once(
             code: TransferFailureCode::Failed,
             message: error,
             aria2_error_code: None,
+            completed: Vec::new(),
         })
         .map_err(TransferAttemptFailure::diagnostic)?;
     let aria2 = Aria2Supervisor::spawn(aria2_config)
@@ -171,6 +175,7 @@ pub(super) fn transfer_once(
             code: TransferFailureCode::Failed,
             message: format!("aria2 startup failed: {error}"),
             aria2_error_code: None,
+            completed: Vec::new(),
         })
         .map_err(TransferAttemptFailure::diagnostic)?;
     run_transfer_with_supervisor(plan, cancellation, network, aria2)
@@ -241,6 +246,7 @@ pub(super) fn run_transfer_with_supervisor(
                     code: TransferFailureCode::ShutdownIncomplete,
                     message: "aria2 cancellation monitor panicked during shutdown".to_owned(),
                     aria2_error_code: None,
+                    completed: Vec::new(),
                 },
                 retained_supervisor: Some(aria2),
             });
@@ -252,6 +258,7 @@ pub(super) fn run_transfer_with_supervisor(
                     code: TransferFailureCode::ShutdownIncomplete,
                     message: format!("aria2 shutdown incomplete: {error}"),
                     aria2_error_code: None,
+                    completed: Vec::new(),
                 },
                 retained_supervisor: Some(aria2),
             });
@@ -310,18 +317,29 @@ pub(super) fn transfer_with_one_refresh(
                     .map_err(|error| (format!("invalid refreshed transfer plan: {error}"), None))?;
             ensure_same_media_collection(&initial_plan, &refreshed_plan)
                 .map_err(|error| (error, None))?;
-            let outcomes = transfer_once(
-                &refreshed_plan,
-                cancellation,
-                aria2_program,
-                network,
-                &user_args,
-                #[cfg(target_os = "linux")]
-                containment,
-                #[cfg(target_os = "linux")]
-                1,
-            )
-            .map_err(TransferAttemptFailure::into_archive_error)?;
+            // A refresh re-extracts URLs for the same media collection. Items
+            // that completed before the failure are already on the staging
+            // directory; retrying the whole plan downloaded those bytes a second
+            // time (observed on Windows as a second `GET` for the first item).
+            let completed = std::mem::take(&mut failure.diagnostic.completed);
+            let retry_plan = xarchive_download::unfinished_plan(&refreshed_plan, &completed);
+            let retried = if retry_plan.items.is_empty() {
+                Vec::new()
+            } else {
+                transfer_once(
+                    &retry_plan,
+                    cancellation,
+                    aria2_program,
+                    network,
+                    &user_args,
+                    #[cfg(target_os = "linux")]
+                    containment,
+                    #[cfg(target_os = "linux")]
+                    1,
+                )
+                .map_err(TransferAttemptFailure::into_archive_error)?
+            };
+            let outcomes = xarchive_download::merge_outcomes(&refreshed_plan, completed, retried);
             Ok((refreshed, refreshed_plan, outcomes, None))
         }
         Err(failure) => {
@@ -404,6 +422,7 @@ impl TransferAttemptFailure {
                 code: TransferFailureCode::Failed,
                 message: format!("aria2 startup failed: {}", failure.error),
                 aria2_error_code: None,
+                completed: Vec::new(),
             },
             retained_supervisor: failure.owner,
         }

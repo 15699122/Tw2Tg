@@ -1227,6 +1227,12 @@ mod configuration_exchange_cancellation_tests {
         )
         .unwrap();
         let mut local = crate::config::AppConfig::default();
+        // The preview revision binds the document and the durable bytes, so the
+        // value for a missing file has to come from `preview`.
+        let missing_revision = document
+            .preview(&local, &paths.root, None)
+            .unwrap()
+            .revision;
 
         // Uncontended wait succeeds; the cancel then arrives before the commit
         // acceptance point, which is precisely the window nothing tested.
@@ -1235,7 +1241,7 @@ mod configuration_exchange_cancellation_tests {
         cancel_configuration_exchange().expect("cancel command");
         let error = match exchange_apply_persist(
             &document,
-            "missing",
+            &missing_revision,
             &mut local,
             &paths,
             &maintenance,
@@ -1269,7 +1275,7 @@ mod configuration_exchange_cancellation_tests {
             exchange_apply_wait(&locks, &fresh, CONFIGURATION_EXCHANGE_WAIT).expect("second wait");
         let preview = exchange_apply_persist(
             &document,
-            "missing",
+            &missing_revision,
             &mut local,
             &paths,
             &maintenance,

@@ -1,5 +1,6 @@
 import { validBootstrap, validPairingError } from "./browser-pairing.js";
 import { WebSocketBridge } from "./websocket-bridge.js";
+import { normalizeWebSocketSettings } from "./websocket-settings.js";
 
 export const NATIVE_HOST_NAME = "com.tw2tg.xarchive";
 export const MAX_PENDING_REQUESTS = 64;
@@ -193,11 +194,46 @@ export class TransportBridge {
     return { channel: this.channel, native: { state: this.native.port ? "connected" : "not_connected" }, websocket: this.websocket.getStatus() };
   }
 
+  /**
+   * Save a settings request without letting a failed migration destroy a
+   * working legacy credential.
+   *
+   * Switching to `automatic` clears the stored port and token, so the switch is
+   * only accepted once an automatic bootstrap actually authenticated. Until
+   * then the previous settings stay in storage: a new Extension with an older
+   * Desktop (or a Desktop that is simply not running) must not trade a usable
+   * legacy pairing for a mode that cannot connect. `WebSocketBridge.connect`
+   * already rewrites the stored settings after a successful ticket
+   * authentication, and that is the only proof the migration is safe.
+   */
   async saveWebSocketSettings(value) {
-    const settings = await this.websocket.saveSettings(value);
-    this.channel = settings.mode === "native" ? "native" : "websocket";
-    if (this.channel === "websocket" && settings.enabled) await this.websocket.connect();
-    return { settings, status: this.getStatus() };
+    const requested = normalizeWebSocketSettings(value);
+    const previous = this.websocket.settings;
+    const migrating = requested.mode === "automatic"
+      && previous.mode === "legacy"
+      && Boolean(previous.token)
+      && requested.enabled;
+    if (!migrating) {
+      const settings = await this.websocket.saveSettings(requested);
+      this.channel = settings.mode === "native" ? "native" : "websocket";
+      if (this.channel === "websocket" && settings.enabled) await this.websocket.connect();
+      return { settings, status: this.getStatus() };
+    }
+    this.channel = "websocket";
+    this.websocket.disconnect("automatic pairing migration");
+    // In memory only: storage keeps the legacy credential until the ticket
+    // authentication succeeds and `connect` performs the durable rewrite.
+    this.websocket.settings = { ...requested };
+    try {
+      await this.websocket.connect();
+    } catch (error) {
+      // A retryable failure has already scheduled a reconnect; cancel it before
+      // the legacy credential comes back, so the retry cannot race the restore.
+      this.websocket.disconnect("automatic pairing migration failed");
+      this.websocket.settings = previous;
+      throw error;
+    }
+    return { settings: { ...this.websocket.settings }, status: this.getStatus() };
   }
 
   async reconnect() {

@@ -175,20 +175,32 @@ fn system_proxy_supported() -> bool {
     cfg!(target_os = "windows")
 }
 
+/// Build the executor configuration for a candidate [`crate::config::AppConfig`].
+///
+/// Kept separate from [`apply_network_config`] so a setting can be applied to the
+/// runtime *before* it is accepted durably: a replacement that cannot
+/// initialize must not leave a persisted value behind.
+fn executor_config_for(
+    state: &RuntimeState,
+    config: &crate::config::AppConfig,
+) -> crate::executor::ExecutorConfig {
+    let database_path = state.executor.database_path().to_owned();
+    crate::runtime::executor_config(
+        &state.portable_root,
+        config,
+        database_path,
+        state.cache_root.join("staging"),
+        state.download_root.clone(),
+    )
+}
+
 /// Push a saved network configuration into the running runtime.
 ///
 /// The executor holds a copy of the configuration, so a mode change only takes
 /// effect once this runs. Reusing `replace_executor` keeps the Browser transport
 /// on the same service generation instead of pointing it at a closed executor.
 fn apply_network_config(state: &mut RuntimeState) -> Result<(), String> {
-    let database_path = state.executor.database_path().to_owned();
-    let config = crate::runtime::executor_config(
-        &state.portable_root,
-        &state.config,
-        database_path,
-        state.cache_root.join("staging"),
-        state.download_root.clone(),
-    );
+    let config = executor_config_for(state, &state.config);
     state.replace_executor(config)
 }
 
@@ -662,11 +674,48 @@ pub(crate) fn save_application_settings(
     Ok(app_status(&state))
 }
 
+/// Transaction core for a transfer-backend change.
+///
+/// `candidate` is the configuration the caller wants to accept and `previous` is
+/// the configuration that is still in effect and still durable. The runtime is
+/// rebuilt onto the candidate **first**: that is the step that can fail after
+/// stopping the previous executor, and the only step whose failure must not
+/// leave a persisted or reported new value. A failed durable write after a
+/// successful rebuild rolls the executor back onto `previous` for the same
+/// reason. `state.config` changes only after both halves succeeded.
+fn apply_transfer_choice(
+    state: &mut RuntimeState,
+    mut candidate: crate::config::AppConfig,
+    previous: &crate::config::AppConfig,
+    paths: &crate::portable::PortablePaths,
+) -> Result<(), String> {
+    let restore = |state: &mut RuntimeState, error: String| match state
+        .replace_executor(executor_config_for(state, previous))
+    {
+        Ok(()) => error,
+        Err(restore) => {
+            format!("{error}; restoring the previous transfer configuration failed: {restore}")
+        }
+    };
+    if let Err(error) = state.replace_executor(executor_config_for(state, &candidate)) {
+        return Err(restore(state, error));
+    }
+    if let Err(error) = candidate.save(paths) {
+        return Err(restore(state, error));
+    }
+    state.config = candidate;
+    Ok(())
+}
+
 /// Persist the optional aria2 transfer choice and push it into the executor.
 ///
 /// The executor holds a copy of the configuration, so toggling only takes
-/// effect once `apply_network_config` rebuilds it. gallery-dl performs the byte
-/// download whenever the flag is off, so this never depends on aria2 running.
+/// effect once the executor is rebuilt. gallery-dl performs the byte download
+/// whenever the flag is off, so this never depends on aria2 running.
+///
+/// Failure contract: a toggle is one acceptance decision. When the executor
+/// replacement fails, the configuration file and `get_app_status` keep the
+/// previous value (see [`apply_transfer_choice`]).
 #[tauri::command]
 pub(crate) fn set_use_aria2(
     state: State<'_, Mutex<RuntimeState>>,
@@ -679,17 +728,19 @@ pub(crate) fn set_use_aria2(
     let mut candidate = state.config.clone();
     candidate.download.use_aria2 = use_aria2;
     let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
-    candidate.save(&paths)?;
-    state.config = candidate;
-    if changed {
-        state.debug(
-            "download",
-            &format!("use_aria2={use_aria2} transfer backend updated"),
-        );
+    if !changed {
+        // An unchanged toggle still persists, so a caller can repair a file that
+        // drifted from the runtime value without rebuilding the executor.
+        candidate.save(&paths)?;
+        state.config = candidate;
+        return Ok(app_status(&state));
     }
-    if changed {
-        apply_network_config(&mut state)?;
-    }
+    let previous = state.config.clone();
+    apply_transfer_choice(&mut state, candidate, &previous, &paths)?;
+    state.debug(
+        "download",
+        &format!("use_aria2={use_aria2} transfer backend updated"),
+    );
     Ok(app_status(&state))
 }
 
@@ -938,5 +989,65 @@ mod tests {
         ));
         assert!(message.contains("cannot be applied"));
         assert!(!message.contains("s3cret"));
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod transfer_choice_tests {
+    use super::apply_transfer_choice;
+    use crate::portable::PortablePaths;
+    use crate::runtime::RuntimeState;
+
+    /// W3 executor-replacement contract: a toggle whose runtime rebuild fails
+    /// must leave the durable file and the reported configuration on the
+    /// previous value. Before the fix the write happened first, so the error
+    /// still came with `use_aria2: true` on disk and in `get_app_status`.
+    ///
+    /// The fault is a persisted transport setting the replacement cannot parse,
+    /// which is exactly the Windows-observed failure (executor replacement
+    /// rejected while the configuration file already held the new value).
+    #[test]
+    fn a_replacement_failure_keeps_the_previous_choice_durable_and_reported() {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-transfer-choice-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        let paths = PortablePaths::from_root(state.portable_root.clone());
+        state
+            .config
+            .save(&paths)
+            .expect("persist initial configuration");
+        let previous_bytes = std::fs::read(&paths.config_file).expect("config bytes");
+        let previous = state.config.clone();
+        assert!(!previous.download.use_aria2);
+
+        state
+            .database
+            .as_ref()
+            .expect("database")
+            .set_setting("download.downloader_arguments", "42", "now")
+            .expect("store malformed transport settings");
+
+        let mut candidate = previous.clone();
+        candidate.download.use_aria2 = true;
+        let error = apply_transfer_choice(&mut state, candidate, &previous, &paths)
+            .expect_err("the replacement must fail");
+        assert!(
+            error.contains("invalid persisted downloader settings"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !state.config.download.use_aria2,
+            "a failed replacement must not be reported as the effective choice"
+        );
+        assert_eq!(
+            std::fs::read(&paths.config_file).expect("config bytes"),
+            previous_bytes,
+            "a failed replacement must not leave the new value persisted"
+        );
+        drop(state);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

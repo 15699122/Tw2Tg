@@ -14,6 +14,7 @@ pub use client::Aria2HttpClient;
 pub use driver::{
     Aria2TransferDriver, MediaTransferPlan, TransferControl, TransferDriver, TransferDriverConfig,
     TransferFailure, TransferFailureCode, TransferOutcome, TransferPlanItem, TransferProgress,
+    merge_outcomes, unfinished_plan,
 };
 pub use error::DownloadError;
 pub use model::{DownloadBackend, TransferFile, TransferId, TransferState, TransferStatus};

@@ -190,7 +190,7 @@ test("legacy settings require explicit mode and never become automatic credentia
   assert.equal(normalizeWebSocketSettings().mode, "automatic");
 });
 
-test.skip("failed automatic migration retains the legacy credential until authentication succeeds — CROSS_PLATFORM_CHANGE_REQUIRED", async () => {
+test("failed automatic migration retains the legacy credential until authentication succeeds", async () => {
   const stored = { xarchiveWebSocketSettings: { enabled: true, mode: "legacy", port: 17321, token: "synthetic-legacy-token" } };
   const api = { runtime: {}, storage: { local: {
     get(key, callback) { callback({ [key]: stored[key] }); },
@@ -201,6 +201,28 @@ test.skip("failed automatic migration retains the legacy credential until authen
   await bridge.websocket.loadSettings();
   await assert.rejects(bridge.saveWebSocketSettings({ enabled: true, mode: "automatic" }));
   assert.ok(JSON.stringify(stored).includes("synthetic-legacy-token"));
+  assert.equal(stored.xarchiveWebSocketSettings.mode, "legacy");
+  bridge.websocket.disconnect();
+});
+
+test("automatic migration persists only after the ticket authentication succeeds", async () => {
+  const stored = { xarchiveWebSocketSettings: { enabled: true, mode: "legacy", port: 17321, token: "synthetic-legacy-token" } };
+  const api = { runtime: {}, storage: { local: {
+    get(key, callback) { callback({ [key]: stored[key] }); },
+    set(values, callback) { Object.assign(stored, values); callback(); },
+  } } };
+  const sockets = [];
+  const native = { bootstrap: async () => credentials("r1", 43127) };
+  const bridge = new TransportBridge(api, { native, retryDelaysMs: [], socketFactory: socketClass(sockets) });
+  await bridge.websocket.loadSettings();
+  const result = await bridge.saveWebSocketSettings({ enabled: true, mode: "automatic" });
+  assert.equal(result.settings.mode, "automatic");
+  assert.equal(sockets.length, 1);
+  assert.equal(sockets[0].sent[0].ticket.length, 64);
+  assert.equal(sockets[0].sent[0].token, undefined);
+  assert.equal(stored.xarchiveWebSocketSettings.mode, "automatic");
+  assert.equal(JSON.stringify(stored).includes("synthetic-legacy-token"), false);
+  assert.equal(bridge.websocket.getStatus().authenticated, true);
   bridge.websocket.disconnect();
 });
 

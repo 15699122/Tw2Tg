@@ -532,6 +532,7 @@ mod tests {
                 code: TransferFailureCode::ExpiredUrl,
                 message: "url expired".to_owned(),
                 aria2_error_code: None,
+                completed: Vec::new(),
             },
             retained_supervisor: None,
         };
@@ -547,6 +548,7 @@ mod tests {
                 code: TransferFailureCode::Failed,
                 message: "generic failure".to_owned(),
                 aria2_error_code: None,
+                completed: Vec::new(),
             },
             retained_supervisor: None,
         };
@@ -562,6 +564,7 @@ mod tests {
                 code: TransferFailureCode::Failed,
                 message: "generic failure".to_owned(),
                 aria2_error_code: None,
+                completed: Vec::new(),
             },
             retained_supervisor: None,
         };

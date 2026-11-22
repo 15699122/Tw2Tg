@@ -951,16 +951,44 @@ impl ConfigurationExchange {
         *local = preview.candidate.clone();
         Ok(preview)
     }
+    /// Derive the commit token for one preview.
+    ///
+    /// The revision binds **both** inputs of the decision: the exchange document
+    /// that is about to be applied and the durable configuration bytes the
+    /// candidate was computed from. Binding only the durable bytes allowed a
+    /// caller to preview one document and apply a different one with the earlier
+    /// revision, because the persisted file had not changed in between.
+    ///
+    /// The document half hashes the canonical serialization of the parsed
+    /// document, so `preview` and `persist_preview` derive the same value
+    /// without keeping the raw request bytes: two requests that parse to the
+    /// same document are the same decision.
+    fn revision(document: &[u8], persisted: Option<&[u8]>) -> String {
+        use sha2::Digest;
+        let mut hash = sha2::Sha256::new();
+        hash.update((document.len() as u64).to_le_bytes());
+        hash.update(document);
+        match persisted {
+            Some(bytes) => {
+                hash.update([1u8]);
+                hash.update((bytes.len() as u64).to_le_bytes());
+                hash.update(bytes);
+            }
+            // A missing durable configuration is a distinct input, not an empty
+            // file: a revision minted for one must never accept the other.
+            None => hash.update([0u8]),
+        }
+        format!("sha256:{:x}", hash.finalize())
+    }
+
     pub fn preview(
         &self,
         local: &AppConfig,
         root: &std::path::Path,
         persisted: Option<&[u8]>,
     ) -> Result<ConfigurationExchangePreview, String> {
-        use sha2::Digest;
-        let revision = persisted
-            .map(|bytes| format!("sha256:{:x}", sha2::Sha256::digest(bytes)))
-            .unwrap_or_else(|| "missing".into());
+        let document = serde_json::to_vec(self).map_err(|error| error.to_string())?;
+        let revision = Self::revision(&document, persisted);
         let mut candidate = local.clone();
         let mut preserved = Vec::new();
         for (name, value, target, directory) in [

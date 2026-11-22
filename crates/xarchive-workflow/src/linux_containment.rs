@@ -214,38 +214,6 @@ impl VerifiedAttemptDrain {
     }
 }
 
-#[cfg(test)]
-mod verified_drain_tests {
-    use super::*;
-
-    #[test]
-    fn verified_drain_rejects_attempts_outside_workflow_identity_range() {
-        let coordinator =
-            crate::coordination::unix::LinuxCoordinator::new(std::env::temp_dir().join(format!(
-                "xarchive-verified-drain-lock-{}",
-                std::process::id()
-            )))
-            .expect("coordinator");
-        let session = crate::ExecutionReservation::acquire(
-            &coordinator,
-            "job",
-            Path::new("/archive/Tweets/123"),
-        )
-        .expect("reservation")
-        .bind_existing_attempt(crate::AttemptIdentity::new("job", u32::MAX).unwrap())
-        .expect("session");
-        let root =
-            std::env::temp_dir().join(format!("xarchive-verified-drain-{}", std::process::id()));
-        let evidence = LinuxContainment::recover_production_attempt(
-            &root,
-            session.recovery_drain_binding(Path::new("/tmp/workspace")),
-            Duration::from_millis(1),
-        )
-        .expect("maximum workflow attempt is representable by adapter identity");
-        assert_eq!(evidence.identity().attempt(), u32::MAX);
-    }
-}
-
 /// Validate the dedicated group path before any filesystem access.
 fn group_path(parent: &Path, name: &str) -> io::Result<PathBuf> {
     let root = Path::new(CGROUP_ROOT);
@@ -596,14 +564,13 @@ impl LinuxContainment {
                 "invalid containment launch state or executable",
             ));
         }
-        if let Some((state, _)) = &self.production_registration {
-            if state
+        if let Some((state, _)) = &self.production_registration
+            && state
                 .lock()
                 .map_err(|_| io::Error::other("writer registry poisoned"))?
                 .closed
-            {
-                return Err(io::Error::other("production writer admission closed"));
-            }
+        {
+            return Err(io::Error::other("production writer admission closed"));
         }
         let mut command = Command::new(python);
         self.launch_issued = true;
@@ -720,21 +687,21 @@ impl LinuxContainment {
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or_else(|| io::Error::other("invalid drain timeout"))?;
-        if let Some(child) = self.child.as_mut() {
-            if child.try_wait()?.is_none() {
-                child.kill()?;
-                loop {
-                    if child.try_wait()?.is_some() {
-                        break;
-                    }
-                    if Instant::now() >= deadline {
-                        return Err(io::Error::new(
-                            io::ErrorKind::TimedOut,
-                            "launcher reap timeout",
-                        ));
-                    }
-                    std::thread::sleep(Duration::from_millis(10));
+        if let Some(child) = self.child.as_mut()
+            && child.try_wait()?.is_none()
+        {
+            child.kill()?;
+            loop {
+                if child.try_wait()?.is_some() {
+                    break;
                 }
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "launcher reap timeout",
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(10));
             }
         }
         let fd = openat(
@@ -851,5 +818,37 @@ impl LinuxContainment {
                 _private: (),
             },
         ))
+    }
+}
+
+#[cfg(test)]
+mod verified_drain_tests {
+    use super::*;
+
+    #[test]
+    fn verified_drain_rejects_attempts_outside_workflow_identity_range() {
+        let coordinator =
+            crate::coordination::unix::LinuxCoordinator::new(std::env::temp_dir().join(format!(
+                "xarchive-verified-drain-lock-{}",
+                std::process::id()
+            )))
+            .expect("coordinator");
+        let session = crate::ExecutionReservation::acquire(
+            &coordinator,
+            "job",
+            Path::new("/archive/Tweets/123"),
+        )
+        .expect("reservation")
+        .bind_existing_attempt(crate::AttemptIdentity::new("job", u32::MAX).unwrap())
+        .expect("session");
+        let root =
+            std::env::temp_dir().join(format!("xarchive-verified-drain-{}", std::process::id()));
+        let evidence = LinuxContainment::recover_production_attempt(
+            &root,
+            session.recovery_drain_binding(Path::new("/tmp/workspace")),
+            Duration::from_millis(1),
+        )
+        .expect("maximum workflow attempt is representable by adapter identity");
+        assert_eq!(evidence.identity().attempt(), u32::MAX);
     }
 }

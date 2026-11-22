@@ -146,12 +146,18 @@ impl TransferFailureCode {
 
 /// Terminal failure of a plan execution. `media_id` identifies the item that
 /// failed, when the failure is attributable to one item.
+///
+/// `completed` carries the outcomes that finished before the failure. A refresh
+/// retry must not re-download those items: their bytes are already on the
+/// staging directory and re-adding them to aria2 would fetch the same media
+/// twice (observed as a second `GET` for an item that had already completed).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferFailure {
     pub media_id: Option<String>,
     pub code: TransferFailureCode,
     pub message: String,
     pub aria2_error_code: Option<String>,
+    pub completed: Vec<TransferOutcome>,
 }
 
 impl TransferFailure {
@@ -161,6 +167,7 @@ impl TransferFailure {
             code: TransferFailureCode::Failed,
             message: message.into(),
             aria2_error_code: None,
+            completed: Vec::new(),
         }
     }
 
@@ -170,6 +177,7 @@ impl TransferFailure {
             code,
             message: code.as_str().to_owned(),
             aria2_error_code: None,
+            completed: Vec::new(),
         }
     }
 
@@ -179,6 +187,7 @@ impl TransferFailure {
             code: TransferFailureCode::ExpiredUrl,
             message,
             aria2_error_code: Some(code),
+            completed: Vec::new(),
         }
     }
 }
@@ -299,7 +308,10 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                     let failure =
                         TransferFailure::failed(Some(item.media_id.clone()), error.to_string());
                     self.abandon_pending(&pending);
-                    return Err(failure);
+                    return Err(TransferFailure {
+                        completed: std::mem::take(&mut completed),
+                        ..failure
+                    });
                 }
             };
             pending.push(PendingItem {
@@ -318,10 +330,10 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
             }
             if Instant::now() >= deadline {
                 self.abandon_pending(&pending);
-                return Err(TransferFailure::from_code(
-                    TransferFailureCode::Timeout,
-                    None,
-                ));
+                return Err(TransferFailure {
+                    completed: std::mem::take(&mut completed),
+                    ..TransferFailure::from_code(TransferFailureCode::Timeout, None)
+                });
             }
             let mut still_pending: Vec<PendingItem> = Vec::new();
             for mut entry in pending.drain(..) {
@@ -331,7 +343,10 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                         let media_id = entry.item.media_id.clone();
                         self.abandon_pending(&still_pending);
                         self.abandon_pending(std::slice::from_ref(&entry));
-                        return Err(TransferFailure::failed(Some(media_id), error.to_string()));
+                        return Err(TransferFailure {
+                            completed: std::mem::take(&mut completed),
+                            ..TransferFailure::failed(Some(media_id), error.to_string())
+                        });
                     }
                 };
                 match status.state {
@@ -357,33 +372,45 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                             status.error_code.as_deref(),
                             status.error_message.as_deref(),
                         ) {
-                            return Err(TransferFailure::expired_url(
-                                media_id,
-                                status.error_code.unwrap_or_else(|| "403".into()),
-                                message,
-                            ));
+                            return Err(TransferFailure {
+                                completed: std::mem::take(&mut completed),
+                                ..TransferFailure::expired_url(
+                                    media_id,
+                                    status.error_code.unwrap_or_else(|| "403".into()),
+                                    message,
+                                )
+                            });
                         }
-                        return Err(TransferFailure::failed(Some(media_id), message));
+                        return Err(TransferFailure {
+                            completed: std::mem::take(&mut completed),
+                            ..TransferFailure::failed(Some(media_id), message)
+                        });
                     }
                     TransferState::Removed => {
                         let media_id = entry.item.media_id.clone();
                         entry.last_path = status.files.first().map(|file| file.path.clone());
                         self.abandon_pending(&still_pending);
                         self.abandon_pending(std::slice::from_ref(&entry));
-                        return Err(TransferFailure::failed(
-                            Some(media_id),
-                            "aria2 transfer was removed before completion",
-                        ));
+                        return Err(TransferFailure {
+                            completed: std::mem::take(&mut completed),
+                            ..TransferFailure::failed(
+                                Some(media_id),
+                                "aria2 transfer was removed before completion",
+                            )
+                        });
                     }
                     TransferState::Waiting | TransferState::Active | TransferState::Paused => {
                         if status.completed_bytes < entry.last_completed_bytes {
                             let media_id = entry.item.media_id.clone();
                             self.abandon_pending(&still_pending);
                             self.abandon_pending(std::slice::from_ref(&entry));
-                            return Err(TransferFailure::failed(
-                                Some(media_id),
-                                "transfer progress regressed",
-                            ));
+                            return Err(TransferFailure {
+                                completed: std::mem::take(&mut completed),
+                                ..TransferFailure::failed(
+                                    Some(media_id),
+                                    "transfer progress regressed",
+                                )
+                            });
                         }
                         on_progress(TransferProgress {
                             media_id: entry.item.media_id.clone(),
@@ -404,6 +431,40 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
             std::thread::sleep(self.config.poll_interval);
         }
     }
+}
+
+/// Restrict a refreshed plan to the items that did not complete before the
+/// failure.
+///
+/// A refresh re-extracts URLs for the same media collection, so the items that
+/// already finished are still on the staging directory. Re-adding them would
+/// download the same bytes a second time and could overwrite a verified file.
+pub fn unfinished_plan(
+    plan: &MediaTransferPlan,
+    completed: &[TransferOutcome],
+) -> MediaTransferPlan {
+    MediaTransferPlan {
+        items: plan
+            .items
+            .iter()
+            .filter(|item| {
+                !completed
+                    .iter()
+                    .any(|outcome| outcome.media_id == item.media_id)
+            })
+            .cloned()
+            .collect(),
+    }
+}
+
+/// Merge the outcomes a failed attempt completed with the outcomes of its
+/// refresh retry, ordered by the refreshed plan.
+pub fn merge_outcomes(
+    plan: &MediaTransferPlan,
+    completed: Vec<TransferOutcome>,
+    retried: Vec<TransferOutcome>,
+) -> Vec<TransferOutcome> {
+    order_by_plan(plan, completed.into_iter().chain(retried).collect())
 }
 
 fn order_by_plan(

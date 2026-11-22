@@ -59,15 +59,22 @@ where
             code: TransferFailureCode::Failed,
             message: format!("refresh extraction failed: {error}"),
             aria2_error_code: failure.aria2_error_code.clone(),
+            completed: failure.completed.clone(),
         })?;
         ensure_same_media_collection(initial, &refreshed).map_err(|message| TransferFailure {
             media_id: failure.media_id.clone(),
             code: TransferFailureCode::Failed,
             message,
             aria2_error_code: None,
+            completed: failure.completed.clone(),
         })?;
 
-        let outcomes = (self.transfer)(&refreshed)?;
+        // Only the items that did not finish are retried. A refreshed URL for an
+        // item that already completed would download the same bytes twice and
+        // could overwrite a verified file.
+        let retry_plan = crate::unfinished_plan(&refreshed, &failure.completed);
+        let retried = (self.transfer)(&retry_plan)?;
+        let outcomes = crate::merge_outcomes(&refreshed, failure.completed, retried);
         Ok(RefreshTransferResult {
             outcomes,
             refreshed: true,
@@ -123,6 +130,7 @@ mod tests {
             code: TransferFailureCode::ExpiredUrl,
             message: "forbidden".into(),
             aria2_error_code: Some("403".into()),
+            completed: Vec::new(),
         }
     }
 
@@ -162,6 +170,67 @@ mod tests {
     }
 
     #[test]
+    fn refresh_retries_only_unfinished_items_and_merges_outcomes() {
+        let initial = plan(&[("media-1", "01.jpg"), ("media-2", "02.jpg")]);
+        let refreshed = plan(&[("media-1", "01.jpg"), ("media-2", "02.jpg")]);
+        let mut seen: Vec<Vec<String>> = Vec::new();
+        let mut coordinator = RefreshCoordinator::new(
+            |_: &MediaTransferPlan| Ok::<_, &str>(refreshed.clone()),
+            |candidate: &MediaTransferPlan| {
+                seen.push(
+                    candidate
+                        .items
+                        .iter()
+                        .map(|item| item.media_id.clone())
+                        .collect(),
+                );
+                if seen.len() == 1 {
+                    // The first item completed before the second one hit an
+                    // expired URL.
+                    Err(TransferFailure {
+                        media_id: Some("media-2".into()),
+                        code: TransferFailureCode::ExpiredUrl,
+                        message: "forbidden".into(),
+                        aria2_error_code: Some("403".into()),
+                        completed: outcome(),
+                    })
+                } else {
+                    Ok(vec![TransferOutcome {
+                        media_id: "media-2".into(),
+                        transfer_id: TransferId::new("gid-3").unwrap(),
+                        path: Some("/tmp/staging/02.jpg".into()),
+                        total_bytes: Some(20),
+                    }])
+                }
+            },
+        );
+        let result = coordinator.execute(&initial).expect("refreshed transfer");
+        assert!(result.refreshed);
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[0], ["media-1", "media-2"]);
+        assert_eq!(
+            seen[1],
+            ["media-2"],
+            "an item that already completed must not be downloaded again"
+        );
+        let ids: Vec<&str> = result
+            .outcomes
+            .iter()
+            .map(|outcome| outcome.media_id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            ["media-1", "media-2"],
+            "merged outcomes keep plan order"
+        );
+        assert_eq!(
+            result.outcomes[0].path.as_deref(),
+            Some("/tmp/staging/01.jpg"),
+            "the completed item keeps its original outcome"
+        );
+    }
+
+    #[test]
     fn rejects_changed_media_collection() {
         let initial = plan(&[("media-1", "01.jpg")]);
         let changed = plan(&[("media-2", "02.jpg")]);
@@ -188,6 +257,7 @@ mod tests {
                     code: TransferFailureCode::Failed,
                     message: "disk full".into(),
                     aria2_error_code: None,
+                    completed: Vec::new(),
                 })
             },
         );

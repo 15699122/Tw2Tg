@@ -54,6 +54,37 @@ pub fn embedded_catalog() -> EmbeddedComponentCatalog {
     }
 }
 
+/// Largest catalog the loader will read. The catalog describes a handful of
+/// components; anything larger is not a catalog and is refused before parsing.
+const MAX_CATALOG_BYTES: u64 = 1024 * 1024;
+
+/// Load the versioned catalog shipped inside a package (Offline Bundle).
+///
+/// The file belongs to the trusted distribution root, so this is not a remote or
+/// unsigned manifest: it is read once and validated by the same
+/// [`validate_catalog`] rules the embedded catalog uses. A present but invalid
+/// file fails closed instead of falling back to the empty embedded catalog —
+/// silently ignoring it would report "nothing to install" for a bundle that
+/// claims components.
+pub fn load_catalog_file(path: &Path) -> Result<EmbeddedComponentCatalog, ComponentError> {
+    let metadata = fs::metadata(path)?;
+    if !metadata.is_file() {
+        return Err(ComponentError::InvalidCatalog(
+            "catalog path is not a regular file".to_owned(),
+        ));
+    }
+    if metadata.len() > MAX_CATALOG_BYTES {
+        return Err(ComponentError::InvalidCatalog(format!(
+            "catalog exceeds {MAX_CATALOG_BYTES} bytes"
+        )));
+    }
+    let bytes = fs::read(path)?;
+    let catalog: EmbeddedComponentCatalog = serde_json::from_slice(&bytes)
+        .map_err(|error| ComponentError::InvalidCatalog(error.to_string()))?;
+    validate_catalog(&catalog)?;
+    Ok(catalog)
+}
+
 #[derive(Debug)]
 pub enum ComponentError {
     Io(io::Error),
@@ -128,6 +159,15 @@ impl ComponentManager {
 
     pub fn embedded(root: impl Into<PathBuf>) -> Result<Self, ComponentError> {
         Self::new(root, embedded_catalog())
+    }
+
+    /// Manager over the catalog that ships with a package build
+    /// (`components/catalog.json` inside an Offline Bundle).
+    pub fn from_package_catalog(
+        root: impl Into<PathBuf>,
+        catalog_file: &Path,
+    ) -> Result<Self, ComponentError> {
+        Self::new(root, load_catalog_file(catalog_file)?)
     }
 
     pub fn catalog(&self) -> &EmbeddedComponentCatalog {
@@ -559,6 +599,64 @@ mod tests {
             manager.active_version("worker").expect("active"),
             Some("1.0.0".to_owned())
         );
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    /// The Offline Bundle ships its catalog as a file. It must be read with the
+    /// same rules as the embedded catalog, and a present but invalid file must
+    /// fail closed rather than degrade to "no components to install".
+    #[test]
+    fn package_catalog_file_is_validated_and_fails_closed() {
+        let root = temp_root("package-catalog");
+        let artifact = root.join("artifact");
+        fs::create_dir_all(&artifact).expect("artifact");
+        fs::write(artifact.join("worker.bin"), b"worker").expect("worker");
+        fs::write(artifact.join("LICENSE.txt"), b"MIT").expect("license");
+        let spec = fixture_spec(&root, "1.0.0");
+        let catalog = EmbeddedComponentCatalog {
+            schema_version: COMPONENT_CATALOG_SCHEMA_VERSION,
+            catalog_version: "2026-11-22-u13".to_owned(),
+            components: vec![spec.clone()],
+        };
+        let catalog_file = root.join("catalog.json");
+        fs::write(
+            &catalog_file,
+            serde_json::to_vec(&catalog).expect("catalog json"),
+        )
+        .expect("write catalog");
+
+        let loaded = load_catalog_file(&catalog_file).expect("package catalog");
+        assert_eq!(loaded, catalog);
+        let manager =
+            ComponentManager::from_package_catalog(root.join("components"), &catalog_file)
+                .expect("manager");
+        manager
+            .validate_artifact("worker", &artifact)
+            .expect("catalog and artifact agree");
+
+        let invalid = root.join("invalid.json");
+        fs::write(&invalid, b"{not json").expect("invalid catalog");
+        assert!(matches!(
+            load_catalog_file(&invalid),
+            Err(ComponentError::InvalidCatalog(_))
+        ));
+        let wrong_version = EmbeddedComponentCatalog {
+            schema_version: COMPONENT_CATALOG_SCHEMA_VERSION + 1,
+            ..catalog.clone()
+        };
+        fs::write(
+            &invalid,
+            serde_json::to_vec(&wrong_version).expect("catalog json"),
+        )
+        .expect("write catalog");
+        assert!(matches!(
+            load_catalog_file(&invalid),
+            Err(ComponentError::InvalidCatalog(_))
+        ));
+        assert!(matches!(
+            load_catalog_file(&root),
+            Err(ComponentError::InvalidCatalog(_))
+        ));
         fs::remove_dir_all(root).expect("cleanup");
     }
 }

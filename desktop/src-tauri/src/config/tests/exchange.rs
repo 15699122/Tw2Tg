@@ -58,8 +58,11 @@ fn configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime
             .is_err()
     );
     assert!(!paths.config_file.exists());
+    // The revision binds the document *and* the durable state it was previewed
+    // against, so the value for a missing file has to come from `preview`.
+    let missing_revision = document.preview(&local, &root, None).unwrap().revision;
     document
-        .persist_preview(&mut local, &paths, "missing", &maintenance, None)
+        .persist_preview(&mut local, &paths, &missing_revision, &maintenance, None)
         .unwrap();
     assert_eq!(local.logging.max_files, 7);
     let bytes = fs::read(&paths.config_file).unwrap();
@@ -76,9 +79,11 @@ fn configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime
     assert_eq!(fs::read(&paths.config_file).unwrap(), b"changed");
     fs::remove_file(&paths.config_file).unwrap();
     fs::remove_dir_all(&paths.config_dir).unwrap();
+    // A revision minted while the durable file existed must not admit once it
+    // is gone; the missing state is a different input, not an empty file.
     assert!(
         document
-            .persist_preview(&mut local, &paths, "missing", &maintenance, None)
+            .persist_preview(&mut local, &paths, &revision, &maintenance, None)
             .is_err()
     );
     assert_eq!(local.logging.max_files, 7);
@@ -112,10 +117,11 @@ fn cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds() {
 
     let cancelled = crate::executor::CancellationToken::default();
     cancelled.cancel();
+    let missing_revision = document.preview(&local, &root, None).unwrap().revision;
     let error = match document.persist_preview(
         &mut local,
         &paths,
-        "missing",
+        &missing_revision,
         &maintenance,
         Some(&cancelled),
     ) {
@@ -138,7 +144,7 @@ fn cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds() {
 
     // The same request still applies when nothing is cancelled.
     let preview = document
-        .persist_preview(&mut local, &paths, "missing", &maintenance, None)
+        .persist_preview(&mut local, &paths, &missing_revision, &maintenance, None)
         .expect("an uncancelled apply must succeed");
     assert!(!preview.revision.is_empty());
     assert_eq!(local.logging.max_files, 9);
