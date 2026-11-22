@@ -59,11 +59,13 @@ mod runtime;
 #[allow(unused_imports)]
 pub use runtime::{ArchiveApplicationService, ExecutorRuntime, JobExecutor, JobExecutorHandle};
 mod recovery;
+#[cfg(any(target_os = "linux", windows))]
+use recovery::recover_internal_v1_on_runner;
+#[cfg(target_os = "linux")]
+use recovery::recover_v2_on_runner;
 pub(crate) use recovery::{
     StartupRecoveryOutcome, StartupRecoveryRefusal, StartupRecoveryReport, StartupRecoveryStatus,
 };
-#[cfg(target_os = "linux")]
-use recovery::{recover_internal_v1_on_runner, recover_v2_on_runner};
 mod traits;
 
 pub use crate::executor::factory::ProductionExecutionFactory;
@@ -87,7 +89,8 @@ pub(crate) use crate::executor::containment::{
 #[cfg(windows)]
 pub(crate) use crate::executor::containment::{
     containment_record_root, recover_and_create_windows_writer_job,
-    recover_windows_predecessor_writer_domains,
+    recover_windows_predecessor_writer_domains, recover_writer_domain_set,
+    recover_writer_domain_set_with_evidence,
 };
 
 // The in-memory implementations were `pub struct`s of this module before the
@@ -586,6 +589,20 @@ impl ProductionCoordinator {
             inner,
             _workspace: workspace,
         })
+    }
+
+    pub(super) fn open_from_workspace(database_path: &Path) -> Result<Self, ExecutorError> {
+        let lock_dir = database_path
+            .parent()
+            .ok_or_else(|| ExecutorError::Persistence("database path has no parent".to_owned()))?
+            .join("locks");
+        let workspace = xarchive_workflow::maintenance::WorkspaceGuard::try_enter(&lock_dir)
+            .map_err(|_| ExecutorError::Execution {
+                error_code: "WORKSPACE_ADMISSION_UNAVAILABLE".to_owned(),
+                error_message: "workspace admission unavailable".to_owned(),
+                persistence_already_updated: false,
+            })?;
+        Self::from_admission(database_path, workspace)
     }
 }
 

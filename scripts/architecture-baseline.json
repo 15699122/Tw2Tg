@@ -843,13 +843,13 @@
     },
     "desktop/src-tauri/src/executor.rs": {
       "category": "rust-desktop",
-      "lines": 967,
-      "sha256": "74282d1dc2891faed0341ef6f6a866a6e42bee79350b0fc09d2fad99552d7f05"
+      "lines": 984,
+      "sha256": "a93fcabafe34414aa64d182f4a7f41889f719ab4fbcaf9ac0a7b143f197c14c1"
     },
     "desktop/src-tauri/src/executor/containment.rs": {
       "category": "rust-desktop",
-      "lines": 392,
-      "sha256": "2c6bcb3db75fe0105bd5c1b1432e6d2b7bbe9309f0e8d25a513a1e917c8e0c39"
+      "lines": 439,
+      "sha256": "a0d35779f42726a52e9b4d819dcf9c6a19548ffafa6c5698e381030b9d0ef26b"
     },
     "desktop/src-tauri/src/executor/contracts.rs": {
       "category": "rust-desktop",
@@ -863,8 +863,8 @@
     },
     "desktop/src-tauri/src/executor/recovery.rs": {
       "category": "rust-desktop",
-      "lines": 449,
-      "sha256": "027a9d7fd430c96f73388ede64454147182bd71de1391f3b24d7687a38303d03"
+      "lines": 460,
+      "sha256": "21e4c4f15fe3fbaf4e13fa429f17384ba758da3fd84f4b977e4d0f6d461603b2"
     },
     "desktop/src-tauri/src/executor/runtime.rs": {
       "category": "rust-desktop",
@@ -878,13 +878,13 @@
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
-      "lines": 1064,
-      "sha256": "b055534988f4053859e08588927a7a57503d4a47473674b019136f5cc0f1a67f"
+      "lines": 1134,
+      "sha256": "d30bbc1356b1a3ae7a32c5831448d37a0898a0af6be74cf1cc346872a0ec8b6c"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",
-      "lines": 663,
-      "sha256": "0eec03ff7fc8584659367386b4a4b743bb193b754669950749f25624ef98067c"
+      "lines": 737,
+      "sha256": "ec54bbb6d3571e5a4d1f96ebea1fae887963ee9bb117156ef8b5bed4ed63fd98"
     },
     "desktop/src-tauri/src/executor/session_boundary_tests.rs": {
       "category": "rust-desktop",

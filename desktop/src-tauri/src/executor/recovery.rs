@@ -1,22 +1,27 @@
 //! Startup recovery reporting and journal replay under runner admission.
 //! Original authorization, integrity verification and terminal ordering are preserved.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use super::{
-    ArchiveApplicationService, ExecutorError, JobPersistence, LinuxExecutionContainment,
-    ProductionCoordinator, SessionExecutionBoundary, SessionRunOutcome, StorageJobPersistence,
-    containment_record_root, recover_writer_domain_set, recover_writer_domain_set_with_evidence,
-    resolve_session_run,
+    ArchiveApplicationService, ExecutorError, ProductionCoordinator, StorageJobPersistence,
+    containment_record_root, recover_writer_domain_set_with_evidence,
 };
 #[cfg(target_os = "linux")]
+use super::{
+    JobPersistence, LinuxExecutionContainment, SessionExecutionBoundary, SessionRunOutcome,
+    recover_writer_domain_set, resolve_session_run,
+};
+#[cfg(any(target_os = "linux", windows))]
 use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use xarchive_core::JobState;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use xarchive_storage::{ArchiveService, Database, FileStore};
 #[cfg(target_os = "linux")]
+use xarchive_workflow::ClaimOutcome;
+#[cfg(any(target_os = "linux", windows))]
 use xarchive_workflow::{
-    AttemptIdentity, ClaimOutcome, ExecutionReservation, RecoveryJournalIdentity, SessionError,
+    AttemptIdentity, ExecutionReservation, RecoveryJournalIdentity, SessionError,
     authorize_prepared_recovery,
 };
 
@@ -80,7 +85,7 @@ impl StartupRecoveryReport {
 /// Replay the original journaled attempt under runner admission and live scopes.
 /// `false` means contention: leave the durable job untouched for a later retry.
 /// This never starts a writer or claims a successor attempt.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub(super) fn recover_internal_v1_on_runner(
     service: &ArchiveApplicationService,
     database_path: PathBuf,
@@ -96,9 +101,14 @@ pub(super) fn recover_internal_v1_on_runner(
     let recovery_service = service.clone();
     service.executor.run_operation(admission, move || {
         let recover = || -> Result<bool, String> {
+            #[cfg(target_os = "linux")]
             let coordinator =
                 ProductionCoordinator::open(&database_path).map_err(|e| e.to_string())?;
-            let relative = PathBuf::from("Tweets").join(&tweet_id);
+            #[cfg(windows)]
+            let coordinator = ProductionCoordinator::open_from_workspace(&database_path)
+                .map_err(|e| e.to_string())?;
+            let expected_directory = format!("Tweets/{tweet_id}");
+            let relative = PathBuf::from(&expected_directory);
             let destination = archive_root.join(&relative);
             let reservation =
                 match ExecutionReservation::acquire(&coordinator, &job_id, &destination) {
@@ -123,7 +133,7 @@ pub(super) fn recover_internal_v1_on_runner(
             let attempt = database
                 .archive_attempt(&job_id)
                 .map_err(|e| e.to_string())?;
-            if identity.1 != attempt || identity.3 != relative.to_string_lossy() {
+            if identity.1 != attempt || identity.3 != expected_directory {
                 return Err("InternalV1 journal attempt or destination mismatch".into());
             }
             let initial_state_ok = match identity.0 {
@@ -145,6 +155,7 @@ pub(super) fn recover_internal_v1_on_runner(
                     |bound| bound.attempt() == identity.1,
                 )
                 .map_err(|e| e.to_string())?;
+            std::fs::create_dir_all(&staging_root).map_err(|e| e.to_string())?;
             let record_root = containment_record_root(&staging_root).map_err(|e| e.to_string())?;
             let evidence = recover_writer_domain_set_with_evidence(
                 &record_root,
