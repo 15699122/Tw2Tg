@@ -1,6 +1,14 @@
 ## Current Windows queue — 2026-11-22
 
-Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b`. Input revision: `7450451be0e8be07eeffbb05c97fef2a05dd5a92` (`7450451b`, shared implementation `e9a0c878`, branched from `35ba3479`); the previous source `4ae46ed3` is retained below as history, and unpushed local Windows commits (`540ce28..8eeb709`) are preserved on `backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` for Git reconciliation. Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b`. Input revision: `7450451be0e8be07eeffbb05c97fef2a05dd5a92` (`7450451b`, shared implementation `e9a0c878`, branched from `35ba3479`); cross-platform UI polish implementation `4c4c4f93` sits on top and is the handoff revision (branch tip = documentation commit). The previous source `4ae46ed3` is retained below as history, and unpushed local Windows commits (`540ce28..8eeb709`) are preserved on `backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` for Git reconciliation. Results are recorded in [Windows validation history](windows-validation-history.md).
+
+Desktop UI consistency batch (`4c4c4f93`, `CROSS_PLATFORM_CHANGE_REQUIRED`) — needs WebView2 GUI acceptance before it can be closed:
+
+- Record Import: two card panels, two-column export grid, monospace root/ID fields, outline `导出 JSON`/`导出 YAML` beside one primary `接受导入`, `.preview-table` results, and the polished subtitle.
+- Download Config: failures must render in `--danger` (no green success color), exchange actions must sit in one left-aligned row, aria2 refresh inside the panel body, `下载并安装` icon on the left, all panels card-bordered and aligned with the 下载设置 group.
+- Settings: exactly one page scrollbar (no outer viewport scrollbar), one primary save per panel, `删除凭据` in danger styling, stroke chevrons on both disclosures, solid Bootstrap framing unless the catalog is missing, Telegram status dots, a 3×3 diagnostics grid, Chinese-only proxy explanation, monospace URLs.
+- Dashboard/Jobs: compact `查看所有下载任务`, `.dashboard-detail` at 12px, neutral zero metrics, aligned component rows, no pagination for a single page, refresh in the page header.
+- Matrix: light/dark theme, 100/125/150/200 % DPI, keyboard focus visibility, populated vs empty states. Linux results for this batch are source/render contracts only (`npm test` 276 / 273 pass / 3 Windows-only skip, `npm run check`, architecture 0 findings, docs audit PASS).
 
 Windows validation outcomes at `7450451b`:
 

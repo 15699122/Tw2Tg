@@ -1,7 +1,7 @@
 # Desktop UI Consistency and Polish Plan (2026-11-22)
 
 Owner: Cross-platform Owner (shared CSS, shared page components, UI primitives in `desktop/src/`), Windows Platform Owner (Windows WebView2 GUI acceptance).
-Status: `PROPOSED_CROSS_PLATFORM` (`CROSS_PLATFORM_CHANGE_REQUIRED` — UI presentation & component consistency only; does not alter Tauri IPC commands, storage schemas, or sidecar/download protocols).
+Status: `IMPLEMENTED_CROSS_PLATFORM` (2026-11-22, `CROSS_PLATFORM_CHANGE_REQUIRED` — UI presentation & component consistency only; does not alter Tauri IPC commands, storage schemas, or sidecar/download protocols). Linux/shared implementation and frontend checks are complete; Windows WebView2 GUI acceptance is pending (§6).
 
 ## 1. Objective
 
@@ -58,3 +58,143 @@ Verified directly against `desktop/src/pages/settings-page.jsx`, `desktop/src/co
 
 1. **Cross-platform Owner (Linux)**: implements the shared `desktop/src/style.css`, `desktop/src/pages/*.jsx`, and `desktop/src/components/*.jsx` updates above (`CROSS_PLATFORM_CHANGE_REQUIRED`) and runs existing frontend unit/build checks.
 2. **Windows Platform Owner (Windows)**: after Git handoff, performs Windows WebView2 GUI verification across Dashboard, Account Batch, Jobs, Download Config, Settings, and Record Import pages (light/dark themes, DPI scaling, keyboard focus, error-state rendering, and zero-state vs populated-state checks).
+
+## 6. Implementation record — 2026-11-22 (Linux/shared)
+
+Every row below was implemented in `desktop/src/` on
+`codex/windows-validation-7450451b`, based on Windows source `28075a4`
+(`7450451b` + W3/W6 validation write-back `53d5ef0`). Nothing in this section is
+Windows GUI evidence; §5.2 acceptance is still `NOT_RUN`.
+
+### 6.1 Record import (`PreviewAcceptPage`)
+
+- Export and import are two `<Card>` / `<CardHeader>` / `<CardContent>` panels; the
+  misplaced `.settings-field` wrappers are gone and the export form is a real
+  two-column `.settings-fields` grid (Job/Tweet/Batch ID + record type).
+- Subtitle: `预览待导入记录的媒体证据，并在维护模式下以单事务提交导入。`
+- `#record-import-root` (and the three ID fields) use `.mono-input`; the placeholder is
+  platform-neutral (`例如 /archive 或 D:\Archive`).
+- `导出 JSON` / `导出 YAML` are `variant="outline"`; only `接受导入` keeps the primary
+  fill. Export availability is one named `exportDisabled` expression instead of a
+  duplicated inline condition.
+- Preview and accept results render inside their own cards with a `.preview-table`
+  (header border, mono identity column).
+- `#record-import-records` is styled by the new shared textarea rule; the action bar is
+  `.button-row`, not `.batch-form-options`.
+
+### 6.2 Global form controls and surfaces
+
+- `.settings-field textarea`: `1px` `--border-strong`, `7px` radius, `10px` padding,
+  `--surface` background, `font: 12px/1.6 var(--font-mono)`, `resize: vertical`.
+- `.settings-field select` and `.logs-toolbar select` use `appearance: none` plus one
+  stroke-SVG chevron (light/dark variants), aligned at `right 10px center`.
+- Toggle track: unchecked `var(--surface-hover)` (no heavy `--foreground-muted` fill),
+  checked `var(--accent)` (`#2e6f59` light / `#3f9077` dark) instead of the status
+  `--success`; the knob carries a small shadow so it reads on the light track.
+- `.main-panel` uses `var(--surface-subtle)` and a thin scrollbar (`scrollbar-width:
+  thin` + `::-webkit-scrollbar` 10px, themed thumb). `html, body, #root` are `100%`
+  high and `body` is `overflow: hidden`, so `.main-panel` is the only scroll container.
+- `.ui-button:disabled` no longer renders the primary fill at 50% opacity; disabled
+  buttons drop the fill and keep muted text. `.ui-button-destructive` is defined
+  (danger text/border/surface hover) — it existed in the variant map with no CSS.
+- `.settings-fields + .batch-form-options` / `.settings-fields + .button-row` get a
+  `16px` gap, separating toggle rows from the fields above them.
+- `code` inside `.settings-help` / `.proxy-help` / `.aria2-help` is monospace with a
+  subtle surface chip.
+
+### 6.3 Dashboard, Jobs
+
+- `查看所有下载任务` sits in a `.button-row jobs-footer` with `align-self: flex-start`,
+  so the column flex no longer stretches it to the card width.
+- `.dashboard-detail` is defined (`12px`, muted) — it previously inherited `16px` and
+  inverted the type scale against the `12px` component rows.
+- Component links are one `.dashboard-component-list` grid of
+  `dot / mono name / state`, with `data-tone` (`ok`/`warn`/`off`) driving the dot color.
+- `下载方式` no longer prints the long parenthetical; the state column carries
+  `aria2` / `gallery-dl`.
+- Metric accents: `已完成`/`失败` pass `accent` only when the value is `> 0`
+  (`accent="default"` otherwise), on both Dashboard and Account Batch. A green or red
+  zero is no longer rendered.
+- Jobs page: `刷新` moved into `<PageHeader action>`, pagination renders only when
+  `pageCount > 1`, and the empty state keeps one card frame around `EmptyJobs`
+  (verified: Dashboard and Jobs already shared `.empty-icon`; no solid/dashed mismatch
+  existed).
+
+
+### 6.4 Download config
+
+- `outputSettingsMessage`, `downloaderSettingsMessage`, `exchangeMessage` and
+  `useAria2Message` render through `statusMessageClass(...)`, so failures use
+  `.settings-message-error` instead of the success color.
+- The top three panels sit in a `.settings-layout`; every `SettingsSection` is now a
+  card (`.settings-panel`: `1px` border, `10px` radius, surface background), matching the
+  `下载设置` group.
+- Configuration-exchange actions use one left-aligned `.button-row`
+  (`导出本机配置` / `预览导入` outline, `应用导入` primary, `取消等待` outline when busy).
+- aria2: the refresh action left the collapse chevron and now sits at the end of
+  `.aria2-status-row`; `下载并安装` puts `<Icon name="download">` on the left; the
+  desktop `margin-left: auto` on `.aria2-download-button` is removed so the primary
+  download action is not pushed to the far edge.
+- Technical terms in the argument and exchange help text are wrapped in `<code>`.
+
+### 6.5 Settings
+
+- `保存日志设置` is a primary (`default`) button, matching `保存设置` / `保存代理设置`.
+  Telegram inspection actions (`检查认证`, `检查目标`, `发送测试消息…`) are `outline`;
+  `验证并替换凭据` stays primary; `删除凭据` is `variant="destructive"`.
+- Extension panel: the header refresh beside the collapse chevron is removed; the
+  refresh lives in `.extension-actions` (`刷新 Extension 状态`) and the page header keeps
+  its own `重新检测`.
+- `网络代理` copy is Chinese only: `proxyCoverageText` no longer concatenates the English
+  backend note (the previous text produced `enabled.暂不支持…`). The backend still
+  reports the same facts; the UI states the policy itself.
+- The nine WebSocket counters render as a `<dl>` grid (3 columns, tabular numerals)
+  instead of a ` · `-joined sentence.
+- `Core Bootstrap` uses `.dependency-status` (solid) and only adds
+  `.dependency-missing` (dashed) when the catalog is not ready; the catalog version is
+  `<code>`.
+- Telegram service status uses a dot + label + value grid with `data-tone`
+  (`ok`/`warn`/`off`) and semantic value colors.
+- Both `<details>` disclosures (`当前系统代理配置`, `Extension` guide) hide the native
+  triangle and draw one stroke chevron that rotates on open (`list-style: none`,
+  `::-webkit-details-marker`, `::after`).
+- `代理地址`, `路由检测地址` and `API 地址` inputs use `.mono-input`; `logs`,
+  `gallery-dl`, `aria2` in help text are `<code>`.
+
+### 6.6 Deliberate non-changes
+
+- **Native date inputs** (`开始日期` / `结束日期`) keep native semantics. A custom date
+  picker would re-implement locale, keyboard and validation behavior that WebView2
+  already provides; the `yyyy/mm/日` placeholder is a platform locale decision, not a
+  defect. Recorded so a later UI pass does not reverse it silently.
+- **`.control-panel-content { gap: 16px }`** is unchanged; the component rows are
+  tightened inside their own list (`gap: 2px`) so the existing spacing contract holds.
+- **`.empty-icon`** stays dashed on both pages; no solid/dashed mismatch existed.
+
+### 6.7 Validation (Linux)
+
+| Check | Result |
+|---|---|
+| Desktop Node `npm test` | **PASS** — 276 tests, 273 pass, 3 Windows-only skip, 0 fail (14 new source/render assertions for the items above) |
+| `npm run check` (Vite build) | **PASS** (existing non-blocking dynamic-import chunk warning only) |
+| `node scripts/check-architecture.mjs` | **PASS** — 0 findings after the reviewed baseline reseal for the changed `desktop/src` files |
+| `node scripts/docs-audit.mjs` | **PASS** |
+| `git diff --check` | **PASS** |
+
+Not run: any Windows build or WebView2 render. DPI, dark-theme contrast, keyboard focus
+order and visual acceptance remain Windows-owned (§5.2).
+
+### 6.8 Windows acceptance still required
+
+1. Record Import: both cards, the two-column export grid, the mono root field and the
+   outline exports at 100/125/150/200% DPI.
+2. Download Config: error messages in `--danger`, one left-aligned action row, aria2
+   refresh inside the body, panel card borders aligned with `下载设置`.
+3. Settings: a single scrollbar (no outer viewport scrollbar), the
+   primary/secondary/danger button hierarchy, stroke chevrons on both disclosures,
+   Bootstrap solid vs dashed, Telegram status dots, the 3×3 diagnostics grid, and no
+   mixed-language proxy copy.
+4. Dashboard/Jobs: compact `查看所有下载任务`, `.dashboard-detail` at 12px, neutral zero
+   metrics, aligned component rows, no pagination for a single page, refresh in the page
+   header.
+5. Light and dark themes, keyboard focus visibility, and populated vs empty states.

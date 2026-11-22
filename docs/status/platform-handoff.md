@@ -1,6 +1,126 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-22, Windows validation at 7450451b)
+## Resume summary — authoritative cursor (2026-11-22, desktop UI consistency polish)
+
+> Start here. Everything below this section is retained history and its state claims
+> are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner. Handoff state: **`READY_FOR_WINDOWS`**.
+- Branch: **`codex/windows-validation-7450451b`**.
+- Input revision: **`28075a45`** (Windows return: `7450451b` + W3/W6 validation
+  write-back `53d5ef02` + plan `28075a45`; contains the cross-platform implementation
+  `e9a0c878` and is based on `35ba3479`).
+- Cross-platform implementation revision: **`4c4c4f93`** (shared `desktop/src` UI +
+  tests + reviewed architecture baseline).
+- Handoff revision: the documentation commit after `4c4c4f93`; the branch tip is the
+  handoff revision (`git rev-parse codex/windows-validation-7450451b`).
+- `WINDOWS_BLOCKING`: **none**.
+
+### Windows return accepted on its own terms
+
+The Windows batch reported these results at `7450451b`; they are recorded as the
+Windows Owner's evidence, not re-executed or widened here:
+
+- W3 Rust suites `config::tests::exchange` 2/2, `commands::records` 13/13,
+  `commands::settings` 11/11.
+- W3 WebView2 IPC regressions: `configuration-preview-binding.e2e.mjs` PASS 1/1 (165 ms);
+  `set_use_aria2` replacement-failure PASS 1/1 (479 ms, `reported: false`,
+  `bytesUnchanged: true`); `transfer-save-failure.e2e.mjs` PASS 1/1 (232 ms,
+  `before/after: false`, `errorReturned: true`, `persistedUnchanged: true`).
+- W6: `offline-bundle-package.test.mjs` 7/7, `components` 6/6, Extension 57/57,
+  `xarchive-download --lib` 52/52, and the real `aria2c.exe` dual-media 403 refresh
+  PASS 1/1 (2.68 s) with one `GET` per media item.
+
+Two of those results are the direct acceptance of this branch's previous shared work
+(preview binding and the transfer-choice failure contract), so those rows can be closed
+for their stated scope.
+
+### Preserved unpushed Windows history — do not lose it
+
+`backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` at
+**`8eeb709b93f4df82578ef4aaa9ea2e2feee0d383`** holds **30 local-only commits**
+(`540ce28..8eeb709` after `35ba3479`, covering W1/W2/W3/W4/W5). They are **not** on the
+remote and **not** in this branch. Any later cross-platform review or integration must
+keep that origin visible and reconcile through Git, not by copying files.
+
+### Cross-platform work completed (this batch)
+
+| Item | Change |
+|---|---|
+| Record import (`PreviewAcceptPage`) | Two card panels (export / import) with a real two-column export grid, polished subtitle, `.mono-input` root path and ID fields, `outline` exports with one primary accept, a `.button-row` action bar, `.preview-table` results and severity-aware messages. |
+| Shared form controls | `.settings-field textarea` rule (7px radius, 10px padding, mono, resize), one stroke-SVG chevron for every `select`, toggle track on `--accent` (`#2e6f59` / `#3f9077`) with a softened unchecked track, and disabled buttons that drop the fill instead of looking half enabled. `.ui-button-destructive` now has CSS. |
+| Surfaces | `html/body/#root` are full height with `body { overflow: hidden }`, so `.main-panel` is the only scroll container; it carries `--surface-subtle` and a thin themed scrollbar. Collapsible `SettingsSection`s are cards. |
+| Dashboard / Jobs | Compact `.jobs-footer` action, defined `.dashboard-detail` at 12px, component rows as a dot/mono-name/state grid, neutral zero metrics on Dashboard and Account Batch, single-page pagination hidden, refresh in `<PageHeader>`, `.empty-icon` confirmed unified. |
+| Download config | `statusMessageClass(...)` for all four messages (failures in `--danger`), top panels grouped in `.settings-layout`, exchange actions in one left-aligned `.button-row`, aria2 refresh moved into the panel body, download icon on the left, no far-right primary. |
+| Settings / Telegram | One primary save per panel, inspection actions demoted to `outline`, `删除凭据` as `destructive`, no refresh beside the collapse chevron, stroke chevrons for both `<details>`, solid Bootstrap framing with dashed only when missing, semantic Telegram status dots, 3×3 diagnostics grid, Chinese-only proxy copy, mono URLs/identifiers. |
+| Tests | 14 new assertions across `desktop/test/ui-wiring.test.mjs` (source contracts) and one new render test in `desktop/test/settings-render.test.mjs`; the two proxy-copy tests were updated to the localized contract instead of the old bilingual string. |
+
+The per-item detail, including the three deliberate non-changes (native date inputs,
+`.control-panel-content` gap, `.empty-icon`), is in
+[Desktop UI Consistency and Polish Plan §6](../development/desktop-ui-consistency-polish-plan.md).
+### Validation executed in this batch (Linux, frontend scope)
+
+| Check | Result |
+|---|---|
+| Desktop Node `npm test` | **PASS** — 276 tests, 273 pass, 3 Windows-only skip, 0 fail |
+| `npm run check` (Vite build) | **PASS** (only the pre-existing dynamic-import chunk warning) |
+| `node scripts/check-architecture.mjs` | **PASS** — 283 files, 28 relative edges, **0 findings** after the reviewed baseline reseal for the five changed `desktop/src` files |
+| `node scripts/docs-audit.mjs` | **PASS** |
+| `git diff --check` | **PASS** |
+| `cargo check -p xarchive-desktop --lib --offline` | **PASS** — no Rust source changed in this batch; this only proves the branch still builds |
+
+No Rust behaviour changed in this batch, so the `e9a0c878` Rust results are not
+re-claimed here. Nothing in this section is Windows evidence.
+
+### Windows work required
+
+1. Build a Release artifact from the handoff revision and run the UI acceptance matrix
+   in [the plan §6.8](../development/desktop-ui-consistency-polish-plan.md#68-windows-acceptance-still-required):
+   Record Import cards/mono/exports, Download Config error color and action rows,
+   Settings single scrollbar and button hierarchy, the two disclosure chevrons,
+   Bootstrap solid/dashed, Telegram status dots, the 3×3 diagnostics grid, no
+   mixed-language proxy copy, Dashboard/Jobs compact action and 12px detail scale,
+   neutral zero metrics, hidden single-page pagination.
+2. Every item above is a visual property. The Linux checks are source and render
+   contracts only; light/dark contrast, DPI 100/125/150/200 %, focus order and the
+   single-scrollbar claim must be confirmed by eye on WebView2.
+3. Keep the remaining Manual Validation Queue: real Edge/Chrome legacy-to-automatic
+   pairing migration and its failure path, real six-component Offline Bundle
+   assembly/startup/activation, W7 GUI/DPI matrix and held-busy/moved-focus checks, and
+   the user-stopped proxy session `268c3d0` (PID `66204`, do not operate or close it).
+4. Preserve the 30 unpushed commit history described above and reconcile it through Git.
+
+### Windows validation required
+
+The four items above and the still-open rows in
+[`docs/validation/windows-queue.md`](../validation/windows-queue.md). This batch adds no
+IPC, storage or protocol change, so no new automated Windows check is introduced.
+
+### Known risks
+
+- `.main-panel` is now the only scroll container and `body` is `overflow: hidden`. If a
+  WebView2 build still shows an outer scrollbar, the remaining cause is `#root` sizing;
+  only a real window proves the claim.
+- The checked toggle moved from `--success` to `--accent`. Any screenshot-level review
+  that expected the old bright green is superseded.
+- Disabled controls no longer rely on `opacity`, so a disabled primary is a muted
+  surface. Contrast and focus visibility must be re-checked at 200 % DPI.
+- `statusMessageClass` classifies by Chinese failure keywords; a future English message
+  would need an explicit severity instead of substring matching.
+- The two `proxyCoverageText` tests were rewritten for the localized copy. The old
+  bilingual expectation must not be restored.
+
+### Next owner
+
+Cross-platform Owner → Windows Platform Owner. Fetch the branch, check out its tip,
+confirm the revision above, build, and start with the Settings and Download Config pages
+(single scrollbar and error-color rendering are the two most visible changes).
+
+
+
+## Retained history — 2026-11-22 Windows validation at `7450451b` (superseded cursor)
 
 > Start here. Everything below this section is retained history and its state
 > claims are not current.
