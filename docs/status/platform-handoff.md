@@ -23,6 +23,15 @@ remote or are still local. If they carry work that is not in `35ba3479`, they mu
 published through Git before the next handoff, and this batch's shared changes must be
 reconciled against them.
 
+Two further review items in the message do not match this repository either: there is no
+`crates/xarchive-win-job-iocp` crate (the workspace members are `xarchive-core`,
+`xarchive-download`, `xarchive-native-host`, `xarchive-protocol`,
+`xarchive-sidecar-supervisor`, `xarchive-storage`, `xarchive-telegram` and
+`xarchive-workflow`), and a search for `unsafe {`, `unsafe fn`, `unsafe impl` and
+`unsafe extern` across `crates/` and `desktop/src-tauri/src/` returns **zero** sites, so
+there is no "single unsafe exemption" boundary to review. The shared surface that does
+exist was reviewed instead.
+
 ### Cursor
 
 - Owner: Cross-platform Owner. Handoff state: **`READY_FOR_WINDOWS`**.
@@ -30,8 +39,8 @@ reconciled against them.
 - Cross-platform input revision: **`35ba3479`** (remote branch tip, verified to contain
   `4ae46ed3` as an ancestor).
 - Cross-platform implementation revision: **`e9a0c878`**.
-- Handoff revision: the documentation commit after `e9a0c878`, i.e. the branch tip.
-  Resolve it with `git rev-parse codex/windows-validation-4ae46ed3`.
+- Handoff revision: the documentation commits after `e9a0c878`; the branch tip is the
+  handoff revision. Resolve it with `git rev-parse codex/windows-validation-4ae46ed3`.
 - `WINDOWS_BLOCKING`: **none**. No cross-platform work in this batch depended on a
   Windows result.
 
