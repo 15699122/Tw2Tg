@@ -587,7 +587,8 @@ impl ExecutorRuntime {
                     if recovery_contract == ArchiveRecoveryDispatch::InternalV1
                         && internal_v1_commit_started
                     {
-                        if has_containment {
+                        #[cfg(target_os = "linux")]
+                        if containment.is_some() {
                             let drain = (|| {
                                 let record_root = containment_record_root(&staging_root)
                                     .map_err(|error| error.to_string())?;
@@ -793,8 +794,8 @@ impl ExecutorRuntime {
                             .and_then(resolve_session_run);
                         continue;
                     }
-                    #[cfg(any(target_os = "linux", windows))]
-                    if has_containment {
+                    #[cfg(target_os = "linux")]
+                    if containment.is_some() {
                             let drained = (|| {
                                 let record_root = containment_record_root(&staging_root)
                                     .map_err(|error| error.to_string())?;

@@ -878,8 +878,8 @@
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
-      "lines": 1134,
-      "sha256": "d30bbc1356b1a3ae7a32c5831448d37a0898a0af6be74cf1cc346872a0ec8b6c"
+      "lines": 1135,
+      "sha256": "ff4af93cf55045919480c5dd2ed1fecd4e3be30b4cca2ea2af3cad71e791120d"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",
@@ -928,8 +928,8 @@
     },
     "desktop/src-tauri/src/executor/tests/windows_containment_e2e.rs": {
       "category": "rust-desktop",
-      "lines": 360,
-      "sha256": "50e0bd2a0c9130caaf09b60f1cb7637e30297f74a1d9bbda0475ce23d2bf68f6"
+      "lines": 656,
+      "sha256": "e4c03f3aeceb54e6d45700ce339aa5f4cd5df445113a342a4b66d6bf42f56542"
     },
     "desktop/src-tauri/src/executor/traits.rs": {
       "category": "rust-desktop",
@@ -1413,8 +1413,8 @@
     },
     "crates/xarchive-workflow/src/windows_containment.rs": {
       "category": "rust-library",
-      "lines": 1395,
-      "sha256": "475eb6026dad10c51959280480ec08786c9ff77a84b36dc6fdac8f6422608d47"
+      "lines": 1414,
+      "sha256": "c72483e156f8691128510de3ba5c12df463ca38f637331bc4ea42478da1241c3"
     },
     "crates/xarchive-win-job-iocp/src/lib.rs": {
       "category": "rust-library",

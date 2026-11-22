@@ -164,6 +164,7 @@ pub struct WindowsWriterJob {
     admission_closed: bool,
     keeper_started: bool,
     recorded: bool,
+    record_root: Option<PathBuf>,
     writer_started: bool,
     drained: bool,
     iocp: Option<xarchive_win_job_iocp::JobCompletionPort>,
@@ -197,6 +198,7 @@ impl WindowsWriterJob {
         drop(record);
         let mut owner = Self::create(identity)?;
         owner.recorded = true;
+        owner.record_root = Some(record_root.to_path_buf());
         Ok(owner)
     }
 
@@ -210,9 +212,11 @@ impl WindowsWriterJob {
         if bytes != identity.record_bytes() {
             return Err(io::Error::other("invalid Windows writer record"));
         }
-        Self::open(identity)?.ok_or_else(|| {
+        let mut owner = Self::open(identity)?.ok_or_else(|| {
             io::Error::other("recorded writer job is absent; drain cannot be proven")
-        })
+        })?;
+        owner.record_root = Some(record_root.to_path_buf());
+        Ok(owner)
     }
 
     /// Refuse to adopt a job that already exists under this attempt identity.
@@ -236,6 +240,7 @@ impl WindowsWriterJob {
             admission_closed: false,
             keeper_started: false,
             recorded: false,
+            record_root: None,
             writer_started: false,
             drained: false,
             iocp: None,
@@ -256,6 +261,7 @@ impl WindowsWriterJob {
                 admission_closed: true,
                 keeper_started: true,
                 recorded: true,
+                record_root: None,
                 writer_started: false,
                 drained: false,
                 iocp: None,
@@ -606,6 +612,17 @@ impl WindowsWriterJob {
         Ok(Some(std::process::ExitStatus::from_raw(code)))
     }
 
+    fn remove_record_after_drain(&mut self) -> io::Result<()> {
+        if let Some(record_root) = self.record_root.take() {
+            match std::fs::remove_file(self.identity.record_path(&record_root)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+
     fn mark_registered_drained(&mut self) -> io::Result<()> {
         if let Some((state, role)) = &self.production_registration {
             let mut writers = state
@@ -644,6 +661,7 @@ impl WindowsWriterJob {
                 ));
             }
             self.drained = true;
+            self.remove_record_after_drain()?;
             self.mark_registered_drained()?;
             return Ok(());
         }
@@ -676,6 +694,7 @@ impl WindowsWriterJob {
                 && owned_processes_exited
             {
                 self.drained = true;
+                self.remove_record_after_drain()?;
                 self.mark_registered_drained()?;
                 return Ok(());
             }
