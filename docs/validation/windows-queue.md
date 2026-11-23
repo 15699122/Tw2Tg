@@ -18,11 +18,14 @@ Windows validation outcomes at `7450451b`:
 - W6 dual-media 403 refresh: **PASS** — real `aria2c.exe` (`be2099c2...`) `windows_real_aria2` (`2.68s`, unsandboxed loopback; temporary test file removed afterwards) observed one `GET` per media item (`GET /first` -> `GET /expired` 403 -> `GET /fresh`), and `xarchive-download --lib` **PASS 52/52**.
 - W6 Offline Bundle (`029c710`) & legacy browser pairing (non-GUI checks): `offline-bundle-package.test.mjs` **PASS 7/7**, `xarchive-desktop --lib components` **PASS 6/6**, `extension` Node tests **PASS 57/57**.
 
+- **W7 `transfer-switch-focus.e2e.mjs`**: **PASS 1/1 (1s)** on `4e427afc` (`78b508cd...`, `target/w7-transfer-switch-4e427afc-20261123181751/runner.log`). Held-busy and user-moved-focus remain open.
+- **W6 Offline Bundle (`target/w6-offline-bundle-4e427afc`)**: 6-component assembly (`desktop`, `worker`, `native-host`, `extension`, `gallery-dl`, `aria2`) + `verifyOfflineBundle` (`catalogVersion: "2026-11-23-w6"`) + WebView2 startup **PASS scoped** (`1/1`, `564ms`, `database: "ready"`, `executor: "ready"`). Versioned release inputs, release-asset activation (`components_active: 0` on embedded `2026-09-20-u9` catalog), and signing remain open.
+
 Manual Validation Queue (remaining open Windows items):
 
-- W6 Offline Bundle: assemble and validate the real 6-component artifact (layout, embedded-catalog parity, startup, activation) on Windows; versioned release inputs and signing remain Windows/CI-owned.
+- W6 Offline Bundle: versioned release inputs, release-asset activation, and signing on Windows.
 - W6 legacy browser pairing: verify automatic migration (`legacy` -> `automatic`, credential kept until ticket auth succeeds) and failure path on real Edge/Chrome registrations.
-- W7 `96f0fa5` / `19dbc22` & GUI/DPI matrix: held-busy, user-moved-focus, and DPI checks remain open.
+- W7 `96f0fa5` / `19dbc22` & GUI/DPI matrix: 100/125/150% OS DPI visual eye-check, populated-state checks, held-busy, and user-moved-focus remain open.
 - Branch reconciliation: reconcile the 30 unpushed Windows commits on `backup/windows-local-8eeb709` (`540ce28..8eeb709`) with `7450451b` via Git.
 
 `CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878`; this queue entry records Windows W3/W6 results at `7450451b`.
