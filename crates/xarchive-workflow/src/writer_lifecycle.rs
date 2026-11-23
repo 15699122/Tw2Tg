@@ -14,6 +14,8 @@ use crate::AttemptIdentity;
 pub struct VerifiedRecoveryDrain {
     #[cfg(target_os = "linux")]
     evidence: crate::linux_containment::VerifiedAttemptDrain,
+    #[cfg(windows)]
+    evidence: crate::windows_containment::VerifiedAttemptDrain,
 }
 
 #[cfg(target_os = "linux")]
@@ -35,9 +37,28 @@ impl VerifiedRecoveryDrain {
     }
 }
 
+#[cfg(windows)]
+impl VerifiedRecoveryDrain {
+    pub(crate) fn from_windows(evidence: crate::windows_containment::VerifiedAttemptDrain) -> Self {
+        Self { evidence }
+    }
+
+    fn matches_binding(&self, binding: &crate::windows_containment::RecoveryDrainBinding) -> bool {
+        self.evidence.matches_binding(binding)
+    }
+
+    pub(crate) fn identity(&self) -> &AttemptIdentity {
+        self.evidence.identity()
+    }
+
+    pub fn workspace(&self) -> &Path {
+        self.evidence.workspace()
+    }
+}
+
 /// Validate and consume adapter evidence that retires the exact live session.
 /// This authority is deliberately distinct from publication permits.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub fn consume_predecessor_retirement<C: crate::coordination::Coordinator>(
     session: &crate::ExecutionSession<'_, C>,
     evidence: VerifiedRecoveryDrain,
@@ -127,12 +148,12 @@ pub fn authorize_committed_recovery<C: crate::coordination::Coordinator>(
     evidence: VerifiedRecoveryDrain,
     journal: RecoveryJournalIdentity<'_>,
 ) -> Result<(), PublicationError> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = (session, evidence, journal);
         return Err(PublicationError::IncompleteDrain);
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     {
         let binding = session.recovery_drain_binding(journal.workspace);
         if !evidence.matches_binding(&binding) {
@@ -169,12 +190,12 @@ pub fn authorize_prepared_recovery<'session, 'coordinator, C: crate::coordinatio
     evidence: VerifiedRecoveryDrain,
     journal: RecoveryJournalIdentity<'_>,
 ) -> Result<PreparedRecoveryPermit<'session, 'coordinator, C>, PublicationError> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = (session, evidence, journal);
         return Err(PublicationError::IncompleteDrain);
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     {
         let binding = session.recovery_drain_binding(journal.workspace);
         if !evidence.matches_binding(&binding) {

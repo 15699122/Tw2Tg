@@ -91,7 +91,7 @@ fn attempt_facts_staging_verification_rejects_missing_or_replaced_trees() {
         }],
         staging_dir: staging_dir.clone(),
         transfer_file_count: 1,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: None,
     };
     verify_attempt_facts_staging(&files, "job-1", &facts).expect("live staging verifies");
@@ -102,7 +102,7 @@ fn attempt_facts_staging_verification_rejects_missing_or_replaced_trees() {
         files: facts.files.clone(),
         staging_dir: facts.staging_dir.clone(),
         transfer_file_count: facts.transfer_file_count + 1,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: None,
     };
     assert!(

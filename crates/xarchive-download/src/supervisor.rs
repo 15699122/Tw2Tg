@@ -292,6 +292,8 @@ pub struct Aria2Supervisor {
     child: Option<Child>,
     #[cfg(target_os = "linux")]
     containment: Option<xarchive_workflow::linux_containment::LinuxContainment>,
+    #[cfg(windows)]
+    windows_containment: Option<xarchive_workflow::windows_containment::WindowsWriterJob>,
     client: Aria2HttpClient,
     secret_file: Option<PathBuf>,
 }
@@ -455,12 +457,118 @@ impl Aria2Supervisor {
             },
         }
     }
+    /// Owned Windows startup form for attempt coordinators which must retain an
+    /// incompletely drained Job Object owner after any startup failure.
+    #[cfg(windows)]
+    pub fn spawn_windows_contained_owned(
+        config: Aria2SupervisorConfig,
+        owner: xarchive_workflow::windows_containment::WindowsWriterJob,
+    ) -> Result<Self, Aria2StartupFailure> {
+        let initialization = (|| {
+            config.validate()?;
+            let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
+                .with_timeout(config.request_timeout);
+            let secret = config.write_secret_file()?;
+            Ok::<_, DownloadError>((client, secret))
+        })();
+        let (client, secret) = match initialization {
+            Ok(initialized) => initialized,
+            Err(error) => {
+                let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)
+                    .unwrap_or_else(|_| {
+                        Aria2HttpClient::new("127.0.0.1", 1, "cleanup-owner")
+                            .expect("static cleanup client configuration")
+                    });
+                let mut supervisor = Self {
+                    child: None,
+                    windows_containment: Some(owner),
+                    client,
+                    secret_file: None,
+                };
+                return match supervisor.shutdown() {
+                    Ok(()) => Err(Aria2StartupFailure { error, owner: None }),
+                    Err(cleanup) => Err(Aria2StartupFailure {
+                        error: DownloadError::Process(format!(
+                            "initialize: {error}; cleanup: {cleanup}"
+                        )),
+                        owner: Some(supervisor),
+                    }),
+                };
+            }
+        };
+        let mut supervisor = Self {
+            child: None,
+            windows_containment: Some(owner),
+            client,
+            secret_file: Some(secret.clone()),
+        };
+        let result = (|| {
+            let mut args = config.command_args();
+            args.push(format!("--conf-path={}", secret.to_string_lossy()));
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let mut remove = config.environment_remove();
+            if matches!(config.proxy_mode, ProxyMode::Direct) {
+                remove.extend(
+                    std::env::vars_os()
+                        .map(|(key, _)| key.to_string_lossy().into_owned())
+                        .filter(|key| xarchive_core::is_proxy_environment_key(key)),
+                );
+            }
+            let owner = supervisor
+                .windows_containment
+                .as_mut()
+                .expect("owned Windows containment");
+            owner
+                .start_desktop_keeper()
+                .and_then(|()| {
+                    owner.spawn_silent_with_environment(
+                        std::path::Path::new(&config.program),
+                        &arg_refs,
+                        &config.environment(),
+                        &remove,
+                    )
+                })
+                .map_err(|error| DownloadError::Process(error.to_string()))?;
+            let deadline = Instant::now() + config.startup_timeout;
+            loop {
+                if !supervisor.is_running()? {
+                    return Err(DownloadError::SupervisorNotRunning);
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(DownloadError::Process(
+                        "contained aria2 startup timeout".into(),
+                    ));
+                }
+                let startup_client =
+                    Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
+                        .with_timeout(config.request_timeout.min(remaining));
+                if startup_client.get_version().is_ok() {
+                    return Ok(());
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        })();
+        match result {
+            Ok(()) => Ok(supervisor),
+            Err(error) => match supervisor.shutdown() {
+                Ok(()) => Err(Aria2StartupFailure { error, owner: None }),
+                Err(cleanup) => Err(Aria2StartupFailure {
+                    error: DownloadError::Process(format!("start: {error}; cleanup: {cleanup}")),
+                    owner: Some(supervisor),
+                }),
+            },
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn with_secret_file_for_test(client: Aria2HttpClient, secret_file: PathBuf) -> Self {
         Self {
             child: None,
             #[cfg(target_os = "linux")]
             containment: None,
+            #[cfg(windows)]
+            windows_containment: None,
             client,
             secret_file: Some(secret_file),
         }
@@ -518,6 +626,8 @@ impl Aria2Supervisor {
             child: Some(child),
             #[cfg(target_os = "linux")]
             containment: None,
+            #[cfg(windows)]
+            windows_containment: None,
             client,
             secret_file: Some(secret_file),
         })
@@ -531,11 +641,34 @@ impl Aria2Supervisor {
         self.client.get_version()
     }
 
+    fn has_containment(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        if self.containment.is_some() {
+            return true;
+        }
+        #[cfg(windows)]
+        if self.windows_containment.is_some() {
+            return true;
+        }
+        false
+    }
+
     pub fn is_running(&mut self) -> Result<bool, DownloadError> {
         #[cfg(target_os = "linux")]
         if let Some(owner) = self.containment.as_mut() {
             let running = owner
                 .poll_exit()
+                .map_err(|error| DownloadError::Process(error.to_string()))?
+                .is_none();
+            if !running {
+                self.shutdown()?;
+            }
+            return Ok(running);
+        }
+        #[cfg(windows)]
+        if let Some(owner) = self.windows_containment.as_mut() {
+            let running = owner
+                .poll_writer_exit()
                 .map_err(|error| DownloadError::Process(error.to_string()))?
                 .is_none();
             if !running {
@@ -559,8 +692,7 @@ impl Aria2Supervisor {
     }
 
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, DownloadError> {
-        #[cfg(target_os = "linux")]
-        if self.containment.is_some() {
+        if self.has_containment() {
             let deadline = Instant::now() + timeout;
             loop {
                 if !self.is_running()? {
@@ -618,6 +750,17 @@ impl Aria2Supervisor {
         // for the whole process owner, not merely for the secret-file cleanup.
         #[cfg(target_os = "linux")]
         if self.containment.is_some() {
+            return Err(DownloadError::Process(failures.join("; ")));
+        }
+        #[cfg(windows)]
+        if let Some(owner) = self.windows_containment.as_mut() {
+            match owner.stop_and_drain(Duration::from_secs(5)) {
+                Ok(()) => self.windows_containment = None,
+                Err(error) => failures.push(format!("aria2 containment cleanup: {error}")),
+            }
+        }
+        #[cfg(windows)]
+        if self.windows_containment.is_some() {
             return Err(DownloadError::Process(failures.join("; ")));
         }
         if self.child.is_some() {
@@ -751,6 +894,8 @@ mod tests {
             child: None,
             #[cfg(target_os = "linux")]
             containment: None,
+            #[cfg(windows)]
+            windows_containment: None,
             client,
             secret_file: Some(secret_file),
         }

@@ -216,7 +216,7 @@ mod tests {
             let result = crate::archive::SidecarArchiveResult {
                 metadata: raw.clone(),
                 files: vec![],
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", windows))]
                 retained_aria2: None,
             };
             let config = TelegramConfig {

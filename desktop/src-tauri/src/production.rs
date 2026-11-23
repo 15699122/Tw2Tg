@@ -63,6 +63,7 @@ pub(crate) fn execute_v2_archive(
     use_aria2: bool,
     network: &crate::executor::ExecutorNetworkConfig,
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
+    #[cfg(windows)] containment: Option<&crate::executor::WindowsAttemptWriterDomain>,
 ) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
     revalidate_tool_compatibility(request, aria2_program, use_aria2)
         .map_err(|message| (message, None))?;
@@ -73,7 +74,7 @@ pub(crate) fn execute_v2_archive(
             cancellation,
             aria2_program,
             network,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             containment,
         );
     }

@@ -1,6 +1,6 @@
 ## Current Windows queue — 2026-11-23
 
-Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b`. Input revision: `4e427afca0568cb7e4a9216a1655b1ccd9e606e6` (`4e427afc`, containing cross-platform UI polish `4c4c4f93` on top of `28075a45` / `7450451b`). The previous source `4ae46ed3` is retained below as history, and unpushed local Windows commits (`540ce28..8eeb709`) are preserved on `backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` for Git reconciliation. Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b` (reconciled with `backup/windows-local-8eeb709` @ `8eeb709`). Input revision: `4e427afca0568cb7e4a9216a1655b1ccd9e606e6` (`4e427afc`, containing cross-platform UI polish `4c4c4f93` on top of `28075a45` / `7450451b`). The previous source `4ae46ed3` is retained below as history. Results are recorded in [Windows validation history](windows-validation-history.md).
 
 Desktop UI consistency batch (`4c4c4f93` @ `4e427afc`, WebView2 `153.0.4234.48` / `msedgedriver.exe` `153.0.4234.46`, `dpr: 2` / 200% DPI, WDIO Release `78b508cd...`):
 
@@ -26,9 +26,45 @@ Manual Validation Queue (remaining open Windows items):
 - W6 Offline Bundle: versioned release inputs, release-asset activation, and signing on Windows.
 - W6 legacy browser pairing: verify automatic migration (`legacy` -> `automatic`, credential kept until ticket auth succeeds) and failure path on real Edge/Chrome registrations.
 - W7 `96f0fa5` / `19dbc22` & GUI/DPI matrix: 100/125/150% OS DPI visual eye-check, populated-state checks, held-busy, and user-moved-focus remain open.
-- Branch reconciliation: reconcile the 30 unpushed Windows commits on `backup/windows-local-8eeb709` (`540ce28..8eeb709`) with `7450451b` via Git.
 
-`CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878`; this queue entry records Windows W3/W6 results at `7450451b`.
+`CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878` and the reconciled `8eeb709` W1/W2/W5/W6 Windows changes (including `crates/xarchive-win-job-iocp`).
+
+Reconciled W1–W6 history from `backup/windows-local-8eeb709` (`8eeb709`):
+
+
+
+Real `aria2c.exe` W1 + W6 `62739ba`: verified packaged `aria2c.exe` (`be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`) with `xarchive-desktop.exe` (`21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`): `windows_contained_aria2_supervisor_drains_and_authorizes_publication` **PASS 1/1 (350 filtered)**; uncommitted `crates/xarchive-download/tests/windows_real_aria2.rs` two-item 403 refresh experiment **PASS 1/1** (re-downloading `/first` on refresh; kept uncommitted for Cross-platform Owner `CROSS_PLATFORM_REVIEW_REQUIRED` semantics check). See history.
+
+W3 `8d65866`: real contained-writer maintenance-drain E2E (`desktop/src-tauri/src/executor/tests/windows_config_apply_e2e.rs`, `xarchive-desktop.exe` SHA-256 `21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`) verified cancel, timeout, `LockError::Io` distinction, IOCP drain completion, and admission reopen; `windows_config_apply_e2e` **PASS 2/2**, `executor::` **PASS 91/91**, `commands::records` **PASS 13/13**. Shared-owner W3 preview-binding and executor-replacement contracts remain open (`CROSS_PLATFORM_CHANGE_REQUIRED`); `CROSS_PLATFORM_REVIEW_REQUIRED` for `scripts/architecture-baseline.json`. See history.
+
+Release build `9aaa83f`: rebuilt `target\release\xarchive-desktop.exe` (SHA-256 `21084508a17cce78400319bf1aee49968d2770e05562c6fb46d27dafc9b08ee3`) from current `HEAD` and re-ran W1/W5/W4 against the fresh keeper binary: `xarchive-workflow --lib` **PASS 24/24**, `xarchive-desktop --lib executor::` **PASS 89/89**, `xarchive-download --lib` **PASS 51/51**. See history.
+
+W4 `365ef5f`: Windows output E2E suite (`desktop/src-tauri/src/executor/tests/windows_output_e2e.rs`) with `xarchive-desktop.exe` keeper (`8aeb043e8c478b9a885ef67b3dd5a01675ff78de56b9a1a3fc81de2718ddfc57`) verified D1 four export combinations (`false/false`, `true/false`, `false/true`, `true/true`), export-disabled `InternalV1` startup recovery, and `>260`-char long archive path publication; `windows_output_e2e` **PASS 3/3**, `executor::` **PASS 89/89**. Packaged Desktop GUI launch and real remote extraction remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for `scripts/architecture-baseline.json`. See history.
+
+W5 `fa800c0`, `cacdc0c`: enabled Windows `InternalV1` startup crash-recovery adapter, `Downloading` predecessor drain takeover, `Tweets/<id>` normalized manifest path check, and containment record removal only after proven IOCP drain (`windows_containment.rs`), plus live crashed-predecessor and corrupted-record E2E tests; `startup_cas_crash` **PASS 7/7**, `windows_containment_e2e` **PASS 4/4**, `executor::` **PASS 86/86**. `enable_v2` / recovery contract `2` remains fail-closed on Windows; `CROSS_PLATFORM_REVIEW_REQUIRED` for `crates/xarchive-workflow/src/windows_containment.rs` and `scripts/architecture-baseline.json`. See history.
+
+W1 `2717ead`, `95e8164`, `dcc84e3`: added `crates/xarchive-win-job-iocp` safe IOCP wrapper, upgraded `WindowsWriterJob::stop_and_drain` with `JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO` + `BasicAccountingInformation` + `BasicProcessIdList` descendant drain proof, wired `ProductionExecutionFactory` + `Aria2Supervisor::spawn_windows_contained_owned` (retaining `WRITER_CONTAINMENT_UNAVAILABLE` for unregistered attempts), and added E2E grandchild-drain and aria2-ownership tests (`xarchive-desktop.exe` keeper `8aeb043e8c478b9a885ef67b3dd5a01675ff78de56b9a1a3fc81de2718ddfc57`); `xarchive-workflow --lib` **PASS 24/24**, `xarchive-download --lib` **PASS 51/51**, `production_factory_attempt_tests` **PASS 2/2**, `windows_containment_e2e` **PASS 2/2** -> **4/4**. `CROSS_PLATFORM_CHANGE_REQUIRED` for authorized `writer_lifecycle.rs` / `execution.rs` / `lib.rs` recovery-drain generalization; `CROSS_PLATFORM_REVIEW_REQUIRED` for shared crates/tests/baseline. See history.
+
+W2 `5d8875c`: pure-safe Rust fixes for 1:1 `$UpCase` Unicode folding, missing-parent junction lock splitting (`__win/unpinned-parent.lock`), and pre/post-creation 8.3 stem contention; `windows_native` **PASS 22/22 (3 ignored)**, `xarchive-workflow --lib` **PASS 21/21**, Desktop coordinator smoke **PASS 1/1**. Three volume-8.3/env-var tests stay ignored; W1 descendant drain and Desktop publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for `tests/windows_native.rs` and `scripts/architecture-baseline.json`; see history.
+
+W6 `40d0fb6`: shared driver no longer skips cancellation attempts for unvisited pending items after a status failure; mocked four-case regression and module **PASS 8/8**, real single-item aria2 refresh **PASS scoped**. Real multi-item failure, cancellation completion, descendant drain and publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
+W6 `f8acbf7`: real packaged aria2 and project driver classified a loopback 403, refreshed once using a synthetic extraction callback and downloaded exact bytes **PASS 1/1 scoped**. Real extraction, Desktop containment and W1/W2 gates remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
+W6 `5be33fc`: Windows transfer driver and direct-child supervisor used the real packaged pinned aria2 to complete one loopback media plan with exact bytes and output identity **PASS 1/1 scoped**. Contained Desktop execution, real extraction, refresh, drain and publication remain open; shared-crate test requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
+W2 `6710e9c`: an absent destination parent created as a junction after first acquisition allows a second guard for the same eventual destination, **FAIL** on NTFS/ReFS; no-replace publication through the junction was refused in the fixture. Repair stable parent/alias identity and rerun the ignored regression, existing 8.3 and Unicode regressions, and Desktop publication acceptance. Windows test requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
+W6 `1e32476`: project direct-child supervisor and packaged pinned aria2 completed a loopback download with exact bytes and secret cleanup **PASS 1/1 scoped**. Contained Desktop execution, descendant drain, URL refresh and remote-site transfer remain open; shared-crate Windows test requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
+W6 `8dfedb3`: credential test guards now follow the pre-existing-key check; native credential module **PASS 4/4**, with collision behavior reviewed but not deliberately injected. `CROSS_PLATFORM_REVIEW_REQUIRED` for the baseline. See history.
+
+W6 `0a714ba`: native credential adapter plus production activation and persistent `RuntimeState` database reopen/revocation in a fresh test process **PASS 1/1 scoped**, using a synthetic identity response. Packaged Desktop restart, GUI secrecy and real Telegram send remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See history.
+
+W6 `45547de`: native Credential Manager synthetic value survives and is replaced across separate test processes, then removed, **PASS 1/1 scoped**. Desktop restart, GUI secrecy and real Telegram send remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the baseline. See history.
+
+W7 `35ba347`: two isolated executions of the committed transfer-switch keyboard regression reached only blank WebDriver documents; product assertions **NOT_RUN** and automation **BLOCKED_AUTOMATION**. Retry using a working driver or manually verify Space, persisted enabled state, restored focus, Enter and persisted disabled state; also check held-busy and user-moved-focus separately. Bind each result to source and executable SHA-256. Earlier scoped Desktop PASS remains bound to `d8eab68`. See history.
+## Transfer switch committed regression — 2026-11-21
 
 W7 `268c3d0`: isolated proxy save/restart check **NOT_RUN**, user stopped desktop control before interaction. The isolated Desktop PID `66204` was present at a later read-only identity check; preserve the stopped session. See history and manual queue.
 

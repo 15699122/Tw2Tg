@@ -23,11 +23,18 @@ use crate::executor::{
     AttemptWriterDomain, LinuxExecutionContainment, attempt_writer_base, containment_record_root,
     recover_and_create_writer_group, recover_predecessor_writer_domains,
 };
+#[cfg(windows)]
+use crate::executor::{
+    WindowsAttemptWriterDomain, containment_record_root, recover_and_create_windows_writer_job,
+    recover_windows_predecessor_writer_domains,
+};
 
 pub struct ProductionExecutionFactory {
     config: ExecutorConfig,
     #[cfg(target_os = "linux")]
     containment: Option<LinuxExecutionContainment>,
+    #[cfg(all(test, windows))]
+    keeper_executable: Option<std::path::PathBuf>,
 }
 
 fn decode_job_execution_spec(
@@ -46,7 +53,15 @@ impl ProductionExecutionFactory {
             config,
             #[cfg(target_os = "linux")]
             containment: None,
+            #[cfg(all(test, windows))]
+            keeper_executable: None,
         }
+    }
+
+    #[cfg(all(test, windows))]
+    pub(crate) fn with_windows_keeper_executable(mut self, executable: std::path::PathBuf) -> Self {
+        self.keeper_executable = Some(executable);
+        self
     }
 
     #[cfg(target_os = "linux")]
@@ -80,17 +95,6 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         if identity.job_id() != snapshot.job_id {
             return Err(ExecutorError::Persistence("attempt/job mismatch".into()).into());
         }
-        #[cfg(windows)]
-        {
-            let _ = registration;
-            return Err(ExecutorError::Execution {
-                error_code: "WRITER_CONTAINMENT_UNAVAILABLE".to_owned(),
-                error_message: "Windows writer containment is not provisioned".to_owned(),
-                persistence_already_updated: false,
-            }
-            .into());
-        }
-        #[cfg(not(windows))]
         self.create_attempt_execution(identity, snapshot, Some(registration))
     }
 
@@ -134,6 +138,16 @@ impl ProductionExecutionFactory {
         snapshot: &JobSnapshot,
         registration: Option<xarchive_workflow::WriterRegistration>,
     ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
+        #[cfg(windows)]
+        if registration.is_none() {
+            return Err(ExecutorError::Execution {
+                error_code: "WRITER_CONTAINMENT_UNAVAILABLE".to_owned(),
+                error_message: "Windows writer containment requires a registered attempt"
+                    .to_owned(),
+                persistence_already_updated: false,
+            }
+            .into());
+        }
         let job_id = identity.job_id();
         let database = Database::open(&self.config.database_path)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
@@ -200,6 +214,42 @@ impl ProductionExecutionFactory {
         )];
         env.extend(environment.set);
         let environment = ChildProcessEnvironment::new(env, environment.remove);
+        #[cfg(windows)]
+        let attempt_domain = {
+            let record_root =
+                containment_record_root(&self.config.staging_root).map_err(|error| {
+                    ExecutorError::Execution {
+                        error_code: "STAGING_ROOT_NOT_ABSOLUTE".to_owned(),
+                        error_message: error.to_string(),
+                        persistence_already_updated: false,
+                    }
+                })?;
+            std::fs::create_dir_all(&self.config.staging_root).map_err(|error| {
+                ExecutorError::Execution {
+                    error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                }
+            })?;
+            recover_windows_predecessor_writer_domains(
+                &record_root,
+                &self.config.staging_root,
+                identity,
+            )
+            .map_err(|error| ExecutorError::Execution {
+                error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            })?;
+            WindowsAttemptWriterDomain {
+                registration: registration.clone(),
+                record_root,
+                workspace: self.config.staging_root.clone(),
+                attempt: identity.clone(),
+                #[cfg(test)]
+                keeper_executable: self.keeper_executable.clone(),
+            }
+        };
         #[cfg(target_os = "linux")]
         let attempt_domain =
             self.containment
@@ -266,7 +316,18 @@ impl ProductionExecutionFactory {
                 std::time::Duration::from_secs(5),
             ),
         };
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(windows)]
+        let supervisor = match recover_and_create_windows_writer_job(&attempt_domain, "sidecar") {
+            Ok(owner) => SidecarSupervisor::spawn_windows_contained_with_environment(
+                owner,
+                std::path::Path::new(program),
+                &args,
+                &environment,
+            )
+            .and_then(|supervisor| supervisor.require_ready_v2(std::time::Duration::from_secs(5))),
+            Err(error) => Err(xarchive_sidecar_supervisor::SupervisorError::Spawn(error)),
+        };
+        #[cfg(not(any(target_os = "linux", windows)))]
         let supervisor = SidecarSupervisor::spawn_ready_v2_with_environment(
             program,
             &args,
@@ -299,6 +360,10 @@ impl ProductionExecutionFactory {
         #[cfg(target_os = "linux")]
         {
             context.containment = attempt_domain;
+        }
+        #[cfg(windows)]
+        {
+            context.containment = Some(attempt_domain);
         }
         context.telegram_config_file = self.config.telegram_config_file.clone();
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
@@ -362,12 +427,6 @@ mod production_factory_attempt_tests {
             tweet_id: "tweet".into(),
             state: JobState::Downloading,
         };
-        let result = factory.create_registered_attempt(&identity, &snapshot, owner.registration());
-        assert!(matches!(
-            result,
-            Err(AttemptCreationError::Failed(ExecutorError::Execution { error_code, .. }))
-                if error_code == "WRITER_CONTAINMENT_UNAVAILABLE"
-        ));
         let result = factory.create_for_attempt(&identity, &snapshot);
         assert!(matches!(
             result,
@@ -375,6 +434,12 @@ mod production_factory_attempt_tests {
                 if error_code == "WRITER_CONTAINMENT_UNAVAILABLE"
         ));
         assert!(!root.join("must-not-be-created.sqlite").exists());
+        let result = factory.create_registered_attempt(&identity, &snapshot, owner.registration());
+        assert!(matches!(
+            result,
+            Err(AttemptCreationError::Failed(ExecutorError::Persistence(message)))
+                if message == "archive execution spec is missing"
+        ));
         drop(owner);
         drop(session);
         drop(coordinator);

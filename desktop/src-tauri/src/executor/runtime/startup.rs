@@ -32,9 +32,11 @@ use super::super::{
 };
 use super::super::{DEFAULT_QUEUE_CAPACITY, StorageJobPersistence};
 #[cfg(target_os = "linux")]
+use super::super::{LinuxExecutionContainment, recover_v2_on_runner};
+#[cfg(any(target_os = "linux", windows))]
 use super::super::{
-    LinuxExecutionContainment, ProductionCoordinator, containment_record_root,
-    recover_internal_v1_on_runner, recover_v2_on_runner, recover_writer_domain_set,
+    ProductionCoordinator, containment_record_root, recover_internal_v1_on_runner,
+    recover_writer_domain_set,
 };
 use super::{ArchiveApplicationService, ExecutorRuntime, JobExecutor};
 
@@ -281,7 +283,7 @@ impl ExecutorRuntime {
                         }
                     }
                 }
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", windows))]
                 {
                     let job_ids = match Database::open(&database_path)
                         .and_then(|database| database.internal_v1_recovery_job_ids())
@@ -331,7 +333,7 @@ impl ExecutorRuntime {
                     }
                     let recovery_dispatch_result = Database::open(&database_path)
                         .and_then(|database| database.startup_recovery_dispatch(&candidate.job_id));
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", windows))]
                     let recovery_dispatch_result = if candidate.state == JobState::Downloading {
                         match Database::open(&database_path)
                             .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
@@ -349,6 +351,44 @@ impl ExecutorRuntime {
                     } else {
                         recovery_dispatch_result
                     };
+                    #[cfg(windows)]
+                    if candidate.state == JobState::Downloading
+                        && matches!(recovery_dispatch_result, Ok(ArchiveRecoveryDispatch::InternalV1))
+                        && matches!(persistence.internal_v1_attempt_phase(&candidate.job_id), Ok(Some(None)))
+                    {
+                        let (Ok(boundary_persistence), Ok(coordinator)) = (
+                            StorageJobPersistence::open(&database_path),
+                            ProductionCoordinator::open_from_workspace(&database_path),
+                        ) else {
+                            v2_results.push((candidate.job_id.clone(), Err(
+                                "InternalV1 successor recovery unavailable".to_owned(),
+                            )));
+                            continue;
+                        };
+                        if !persistence.has_execution_spec(&candidate.job_id).unwrap_or(false) {
+                            v2_results.push((candidate.job_id.clone(), Err(
+                                "InternalV1 successor execution spec is unavailable".to_owned(),
+                            )));
+                            continue;
+                        }
+                        let boundary = SessionExecutionBoundary::new(
+                            service.clone(),
+                            boundary_persistence,
+                            coordinator,
+                            archive_root.clone(),
+                        )
+                        .with_windows_recovery_staging(staging_root.clone());
+                        let result = boundary
+                            .execute_on_runner(candidate.job_id.clone())
+                            .and_then(resolve_session_run)
+                            .map(|outcome| matches!(
+                                outcome,
+                                SessionRunOutcome::Finished(JobSnapshot { state: JobState::Complete, .. })
+                            ))
+                            .map_err(|error| error.to_string());
+                        v2_results.push((candidate.job_id.clone(), result));
+                        continue;
+                    }
                     #[cfg(target_os = "linux")]
                     if candidate.state == JobState::Downloading
                         && matches!(recovery_dispatch_result, Ok(ArchiveRecoveryDispatch::InternalV1))
@@ -391,21 +431,21 @@ impl ExecutorRuntime {
                     let recovery_contract = match recovery_dispatch_result {
                         Ok(contract) => contract,
                         Err(error) => {
-                            #[cfg(target_os = "linux")]
+                            #[cfg(any(target_os = "linux", windows))]
                             let is_internal_v1 = Database::open(&database_path)
                                 .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
                                 .ok()
                                 .flatten()
                                 == Some(1);
-                            #[cfg(target_os = "linux")]
+                            #[cfg(any(target_os = "linux", windows))]
                             let message = if is_internal_v1 {
                                 "InternalV1 recovery classification failed"
                             } else {
                                 "startup recovery classification failed"
                             };
-                            #[cfg(not(target_os = "linux"))]
+                            #[cfg(not(any(target_os = "linux", windows)))]
                             let message = "startup recovery classification failed";
-                            #[cfg(target_os = "linux")]
+                            #[cfg(any(target_os = "linux", windows))]
                             if is_internal_v1 {
                                 if candidate.state == JobState::Downloading
                                     && matches!(
@@ -425,9 +465,12 @@ impl ExecutorRuntime {
                                         Ok(Some(None))
                                     )
                                 {
+                                    #[cfg(target_os = "linux")]
                                     let record_root = containment
                                         .as_ref()
                                         .and_then(|_| containment_record_root(&staging_root).ok());
+                                    #[cfg(windows)]
+                                    let record_root = containment_record_root(&staging_root).ok();
                                     let drained = record_root.is_some_and(|record_root| {
                                         Database::open(&database_path)
                                             .and_then(|database| database.archive_attempt(&candidate.job_id))
@@ -470,7 +513,7 @@ impl ExecutorRuntime {
                                     "archive recovery classification failed",
                                 );
                             }
-                            #[cfg(not(target_os = "linux"))]
+                            #[cfg(not(any(target_os = "linux", windows)))]
                             if candidate.state == JobState::Downloaded {
                                 let is_internal_v1 = Database::open(&database_path)
                                     .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
@@ -488,10 +531,21 @@ impl ExecutorRuntime {
                             continue;
                         }
                     };
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", windows))]
+                    let has_containment = {
+                        #[cfg(target_os = "linux")]
+                        {
+                            containment.is_some()
+                        }
+                        #[cfg(windows)]
+                        {
+                            true
+                        }
+                    };
+                    #[cfg(any(target_os = "linux", windows))]
                     let internal_v1_commit_started = if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
                         match persistence.archive_commit_started(&candidate.job_id) {
-                            Ok(true) if candidate.state == JobState::Downloaded && containment.is_none() => {
+                            Ok(true) if candidate.state == JobState::Downloaded && !has_containment => {
                                 let result = recover_internal_v1_on_runner(
                                     &service,
                                     database_path.clone(),
@@ -524,15 +578,16 @@ impl ExecutorRuntime {
                     } else {
                         false
                     };
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", windows))]
                     let internal_v1_published_candidate = recovery_contract
                         == ArchiveRecoveryDispatch::InternalV1
                         && candidate.state == JobState::Downloaded
                         && !internal_v1_commit_started;
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", windows))]
                     if recovery_contract == ArchiveRecoveryDispatch::InternalV1
                         && internal_v1_commit_started
                     {
+                        #[cfg(target_os = "linux")]
                         if containment.is_some() {
                             let drain = (|| {
                                 let record_root = containment_record_root(&staging_root)
@@ -602,8 +657,8 @@ impl ExecutorRuntime {
                         }
                         continue;
                     }
-                    #[cfg(target_os = "linux")]
-                    if internal_v1_published_candidate && containment.is_some() {
+                    #[cfg(any(target_os = "linux", windows))]
+                    if internal_v1_published_candidate && has_containment {
                         let drain = (|| {
                             let record_root = containment_record_root(&staging_root)
                                 .map_err(|error| error.to_string())?;
@@ -633,7 +688,12 @@ impl ExecutorRuntime {
                             Ok(value) => value,
                             Err(_) => continue,
                         };
-                        let coordinator = match ProductionCoordinator::open(&database_path) {
+                        #[cfg(target_os = "linux")]
+                        let coordinator_result = ProductionCoordinator::open(&database_path);
+                        #[cfg(windows)]
+                        let coordinator_result =
+                            ProductionCoordinator::open_from_workspace(&database_path);
+                        let coordinator = match coordinator_result {
                             Ok(value) => value,
                             Err(_) => continue,
                         };
@@ -642,17 +702,20 @@ impl ExecutorRuntime {
                             boundary_persistence,
                             coordinator,
                             archive_root.clone(),
-                        )
-                        .with_optional_recovery_containment(
+                        );
+                        #[cfg(target_os = "linux")]
+                        let boundary = boundary.with_optional_recovery_containment(
                             containment.clone(),
                             staging_root.clone(),
                         );
+                        #[cfg(windows)]
+                        let boundary = boundary.with_windows_recovery_staging(staging_root.clone());
                         let _ = boundary
                             .execute_on_runner(candidate.job_id.clone())
                             .and_then(resolve_session_run);
                         continue;
                     }
-                    #[cfg(not(target_os = "linux"))]
+                    #[cfg(not(any(target_os = "linux", windows)))]
                     if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
                         v2_results.push((
                             candidate.job_id.clone(),
@@ -660,14 +723,14 @@ impl ExecutorRuntime {
                         ));
                         continue;
                     }
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", windows))]
                     if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
                         let commit_started = internal_v1_commit_started;
                         if !commit_started {
                             if !matches!(candidate.state, JobState::Queued | JobState::Validating)
                                 && candidate.state != JobState::Downloading
                             {
-                                if containment.is_some() {
+                                if has_containment {
                                     let drained = (|| {
                                         let record_root = containment_record_root(&staging_root)
                                             .map_err(|error| error.to_string())?;
@@ -704,27 +767,35 @@ impl ExecutorRuntime {
                                 Ok(value) => value,
                                 Err(_) => continue,
                             };
-                            let coordinator = match ProductionCoordinator::open(&database_path) {
+                            #[cfg(target_os = "linux")]
+                            let coordinator_result = ProductionCoordinator::open(&database_path);
+                            #[cfg(windows)]
+                            let coordinator_result =
+                                ProductionCoordinator::open_from_workspace(&database_path);
+                            let coordinator = match coordinator_result {
                                 Ok(value) => value,
                                 Err(_) => continue,
                             };
-                            let boundary = SessionExecutionBoundary::new(
-                                service.clone(),
-                                boundary_persistence,
-                                coordinator,
-                                archive_root.clone(),
-                            )
-                            .with_optional_recovery_containment(
-                                containment.clone(),
-                                staging_root.clone(),
-                            );
-                            let _ = boundary
-                                .execute_on_runner(candidate.job_id.clone())
-                                .and_then(resolve_session_run);
-                            continue;
-                        }
+                        let boundary = SessionExecutionBoundary::new(
+                            service.clone(),
+                            boundary_persistence,
+                            coordinator,
+                            archive_root.clone(),
+                        );
                         #[cfg(target_os = "linux")]
-                        if containment.is_some() {
+                        let boundary = boundary.with_optional_recovery_containment(
+                            containment.clone(),
+                            staging_root.clone(),
+                        );
+                        #[cfg(windows)]
+                        let boundary = boundary.with_windows_recovery_staging(staging_root.clone());
+                        let _ = boundary
+                            .execute_on_runner(candidate.job_id.clone())
+                            .and_then(resolve_session_run);
+                        continue;
+                    }
+                    #[cfg(target_os = "linux")]
+                    if containment.is_some() {
                             let drained = (|| {
                                 let record_root = containment_record_root(&staging_root)
                                     .map_err(|error| error.to_string())?;

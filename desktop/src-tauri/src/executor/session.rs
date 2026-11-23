@@ -1,14 +1,14 @@
 //! Attempt-owned session execution and finalization boundary.
 //! Admission, scope, claim, drain, authorization and terminal ordering stay intact.
 
+#[cfg(target_os = "linux")]
+use super::LinuxExecutionContainment;
 use super::{
     ArchiveApplicationService, AttemptCreationError, CancelArbitration, ExecutorError,
     ExecutorEvent, JobExecution, JobExecutionResult, JobPersistence, JobSnapshot,
 };
-#[cfg(target_os = "linux")]
-use super::{
-    LinuxExecutionContainment, containment_record_root, recover_writer_domain_set_with_evidence,
-};
+#[cfg(any(target_os = "linux", windows))]
+use super::{containment_record_root, recover_writer_domain_set_with_evidence};
 use std::path::PathBuf;
 use xarchive_core::JobState;
 use xarchive_workflow::coordination::Coordinator;
@@ -95,6 +95,8 @@ pub(crate) struct SessionExecutionBoundary<P, C> {
     archive_root: PathBuf,
     #[cfg(target_os = "linux")]
     recovery_containment: Option<(LinuxExecutionContainment, PathBuf)>,
+    #[cfg(windows)]
+    recovery_staging_root: Option<PathBuf>,
 }
 
 /// The running-state advance table shared by the persisted execution paths.
@@ -129,6 +131,8 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
             archive_root,
             #[cfg(target_os = "linux")]
             recovery_containment: None,
+            #[cfg(windows)]
+            recovery_staging_root: None,
         }
     }
 
@@ -149,6 +153,12 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
         staging_root: PathBuf,
     ) -> Self {
         self.recovery_containment = containment.map(|value| (value, staging_root));
+        self
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn with_windows_recovery_staging(mut self, staging_root: PathBuf) -> Self {
+        self.recovery_staging_root = Some(staging_root);
         self
     }
 
@@ -219,12 +229,76 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
             if current.state == JobState::Downloading
                 && self.persistence.is_internal_v1_contract(job_id)?
             {
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(not(any(target_os = "linux", windows)))]
                 return Err(ExecutorError::Execution {
                     error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
                     error_message: "InternalV1 predecessor drain is not provisioned".to_owned(),
                     persistence_already_updated: false,
                 });
+                #[cfg(windows)]
+                {
+                    if !matches!(
+                        self.persistence.internal_v1_attempt_phase(job_id)?,
+                        Some(None)
+                    ) {
+                        return Err(ExecutorError::Execution {
+                            error_code: "INTERNAL_V1_RECOVERY_REQUIRED".to_owned(),
+                            error_message: "journaled InternalV1 attempt requires startup recovery"
+                                .to_owned(),
+                            persistence_already_updated: false,
+                        });
+                    }
+                    let Some(staging_root) = self.recovery_staging_root.as_ref() else {
+                        return Err(ExecutorError::Execution {
+                            error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                            error_message: "InternalV1 predecessor drain is not provisioned"
+                                .to_owned(),
+                            persistence_already_updated: false,
+                        });
+                    };
+                    let predecessor_attempt = self.persistence.current_attempt(job_id)?;
+                    if predecessor_attempt == 0 {
+                        return Err(ExecutorError::Execution {
+                            error_code: "INTERNAL_V1_RECOVERY_REQUIRED".to_owned(),
+                            error_message:
+                                "InternalV1 DOWNLOADING predecessor has no durable attempt"
+                                    .to_owned(),
+                            persistence_already_updated: false,
+                        });
+                    }
+                    let predecessor = reservation
+                        .bind_existing_attempt_checked(
+                            AttemptIdentity::new(job_id, predecessor_attempt)
+                                .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
+                            |identity| identity.job_id() == job_id,
+                        )
+                        .map_err(|error| session_establishment_error(job_id, error))?;
+                    std::fs::create_dir_all(staging_root)
+                        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+                    let record_root = containment_record_root(staging_root)
+                        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+                    let evidence = recover_writer_domain_set_with_evidence(
+                        &record_root,
+                        predecessor.recovery_drain_binding(staging_root),
+                    )
+                    .map_err(|error| ExecutorError::Execution {
+                        error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                        error_message: error.to_string(),
+                        persistence_already_updated: false,
+                    })?;
+                    break 'claim predecessor
+                        .take_over_drained_predecessor(evidence, |identity| {
+                            self.persistence
+                                .claim_internal_v1_successor(job_id, identity.attempt())
+                                .map(|successor| {
+                                    successor.and_then(|attempt| {
+                                        AttemptIdentity::new(job_id, attempt).ok()
+                                    })
+                                })
+                                .map_err(|_| SessionError::ClaimRejected)
+                        })
+                        .map_err(|error| session_establishment_error(job_id, error))?;
+                }
                 #[cfg(target_os = "linux")]
                 {
                     if !matches!(

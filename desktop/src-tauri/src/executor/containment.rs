@@ -10,7 +10,11 @@
 use std::path::{Path, PathBuf};
 
 use xarchive_workflow::AttemptIdentity;
+#[cfg(target_os = "linux")]
 use xarchive_workflow::linux_containment::RecoveryDrainBinding;
+#[cfg(windows)]
+use xarchive_workflow::windows_containment::RecoveryDrainBinding;
+#[cfg(any(target_os = "linux", windows))]
 use xarchive_workflow::writer_lifecycle::VerifiedRecoveryDrain;
 
 /// Explicit provisioning, never inferred from inherited environment variables.
@@ -156,7 +160,7 @@ pub struct AttemptWriterDomain {
 /// The record root lives outside the staging tree so attempt-staging cleanup
 /// can never delete a record whose writer domain still exists: record
 /// absence must keep proving that the protocol never created a group.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub(crate) fn containment_record_root(staging_root: &Path) -> std::io::Result<PathBuf> {
     if !staging_root.is_absolute() {
         return Err(std::io::Error::other(
@@ -186,8 +190,111 @@ pub(crate) fn attempt_writer_base(
 ///
 /// Successor recovery enumerates exactly this set; keep it in sync with the
 /// production spawn sites.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub(crate) const ATTEMPT_WRITER_ROLES: [&str; 3] = ["sidecar", "aria2-0", "aria2-1"];
+
+/// Attempt-bound Windows Job Object writer-domain provisioning for one execution.
+#[cfg(windows)]
+#[derive(Clone)]
+pub struct WindowsAttemptWriterDomain {
+    pub registration: Option<xarchive_workflow::WriterRegistration>,
+    pub record_root: PathBuf,
+    pub workspace: PathBuf,
+    pub attempt: AttemptIdentity,
+    #[cfg(all(test, windows))]
+    pub keeper_executable: Option<PathBuf>,
+}
+
+/// Drain every recorded writer domain from crashed predecessor attempts on Windows.
+/// Any corrupted record or missing Job Object fails closed instead of allowing admission.
+#[cfg(windows)]
+pub(crate) fn recover_windows_predecessor_writer_domains(
+    record_root: &Path,
+    workspace: &Path,
+    attempt: &AttemptIdentity,
+) -> std::io::Result<()> {
+    use xarchive_workflow::windows_containment::{WindowsWriterIdentity, WindowsWriterJob};
+    if attempt.attempt() <= 1 {
+        return Ok(());
+    }
+    for previous_attempt in 1..attempt.attempt() {
+        let previous = AttemptIdentity::new(attempt.job_id(), previous_attempt)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        for writer in ATTEMPT_WRITER_ROLES {
+            let identity = WindowsWriterIdentity::new(workspace, &previous, writer)?;
+            match WindowsWriterJob::open_recorded(record_root, identity) {
+                Ok(mut job) => job.stop_and_drain(std::time::Duration::from_secs(10))?,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Create and register a recorded Windows Job Object for `role` under `domain`.
+#[cfg(windows)]
+pub(crate) fn recover_and_create_windows_writer_job(
+    domain: &WindowsAttemptWriterDomain,
+    role: &'static str,
+) -> std::io::Result<xarchive_workflow::windows_containment::WindowsWriterJob> {
+    use xarchive_workflow::windows_containment::{WindowsWriterIdentity, WindowsWriterJob};
+    let identity = WindowsWriterIdentity::new(&domain.workspace, &domain.attempt, role)?;
+    let mut owner = WindowsWriterJob::create_recorded(&domain.record_root, identity)?;
+    #[cfg(test)]
+    if let Some(keeper) = &domain.keeper_executable {
+        owner = owner.with_keeper_executable(keeper.clone());
+    }
+    if let Some(registration) = &domain.registration {
+        registration.register_windows(&mut owner)?;
+    }
+    Ok(owner)
+}
+
+/// Drain every recorded Windows writer domain of one attempt.
+///
+/// Only absent records or proven IOCP drains succeed; corrupted records or
+/// missing Job Objects fail closed.
+#[cfg(windows)]
+pub(crate) fn recover_writer_domain_set(
+    record_root: &Path,
+    workspace: &Path,
+    job_id: &str,
+    attempt: u64,
+) -> std::io::Result<()> {
+    use xarchive_workflow::windows_containment::{WindowsWriterIdentity, WindowsWriterJob};
+    if attempt == 0 {
+        return Ok(());
+    }
+    std::fs::create_dir_all(workspace)?;
+    let attempt_u32 =
+        u32::try_from(attempt).map_err(|_| std::io::Error::other("attempt exceeds u32"))?;
+    for writer in ATTEMPT_WRITER_ROLES {
+        let attempt_id = AttemptIdentity::new(job_id, attempt_u32)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let identity = WindowsWriterIdentity::new(workspace, &attempt_id, writer)?;
+        match WindowsWriterJob::open_recorded(record_root, identity) {
+            Ok(mut job) => job.stop_and_drain(std::time::Duration::from_secs(10))?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+/// Drain every recorded Windows writer domain of one attempt and mint
+/// [`VerifiedRecoveryDrain`] proof bound to the exact recovery session.
+#[cfg(windows)]
+pub(crate) fn recover_writer_domain_set_with_evidence(
+    record_root: &Path,
+    binding: RecoveryDrainBinding,
+) -> std::io::Result<VerifiedRecoveryDrain> {
+    xarchive_workflow::windows_containment::WindowsWriterJob::recover_production_attempt(
+        record_root,
+        binding,
+        std::time::Duration::from_secs(10),
+    )
+}
 
 /// Drain every recorded writer domain of one attempt.
 ///
