@@ -8,7 +8,7 @@ Desktop UI consistency batch (`4c4c4f93` @ `4e427afc`, WebView2 `153.0.4234.48` 
 - **A2 Download Config**: **PASS scoped** in WebView2 (all 5 `.settings-panel` cards with `1px` border / `10px` radius aligned with `下载设置`; live `#downloader-arguments` failure in `.settings-message-error` `rgb(198, 40, 40)`; left-aligned exchange `.button-row`; `aria2` refresh in `.aria2-status-row`; `下载并安装` `<svg>` icon on left).
 - **A3 Settings**: **PASS scoped** in WebView2 (`body` `overflowY: hidden` + `.main-panel` `overflowY: auto`, note `document.documentElement.scrollHeight` `1761` with `htmlOverflowY: visible`; single primary `default` Save per panel; `删除凭据` `ui-button-destructive`; Extension header refresh removed; both `<details>` `listStyleType: none`; `Core Bootstrap` `.dependency-status` solid; Telegram 3 `data-tone` dots; 9 diagnostics 3-column grid; Chinese-only proxy copy; `.mono-input` URLs). Missing-catalog `.dependency-missing` dashed state: **NOT_RUN**.
 - **A4 Dashboard / Jobs**: **PASS scoped** in WebView2 (compact `查看所有下载任务` `134px` in `448px`; `.dashboard-detail` `12px`; zero metrics `metric-default`; 4 aligned `.dashboard-component-link` rows; Jobs refresh in `.topbar-actions`; single-page pagination hidden).
-- **A5 Matrix**: **200% DPI** (`dpr: 2`), **Light** (`rgb(255, 255, 255)`) & **Dark** (`data-theme="dark"`, `rgb(23, 25, 28)`), **Tab focus** (`2px solid` outline), **Empty/Zero state**: **PASS scoped**. **100/125/150% OS DPI**, **Populated state**, and visual eye-check remain **NOT_RUN** in the Manual Validation Queue.
+- **A5 Matrix**: **200% DPI** (`dpr: 2`), **Light** (`rgb(255, 255, 255)`) & **Dark** (`data-theme="dark"`, `rgb(23, 25, 28)`), **Tab focus** (`2px solid` outline), **Empty/Zero state**: **PASS scoped**. **Populated state** and visual eye-check at current 200% DPI remain **NOT_RUN** in the Manual Validation Queue (100/125/150% OS DPI physical scaling review dropped).
 
 Windows validation outcomes at `7450451b`:
 
@@ -18,14 +18,14 @@ Windows validation outcomes at `7450451b`:
 - W6 dual-media 403 refresh: **PASS** — real `aria2c.exe` (`be2099c2...`) `windows_real_aria2` (`2.68s`, unsandboxed loopback; temporary test file removed afterwards) observed one `GET` per media item (`GET /first` -> `GET /expired` 403 -> `GET /fresh`), and `xarchive-download --lib` **PASS 52/52**.
 - W6 Offline Bundle (`029c710`) & legacy browser pairing (non-GUI checks): `offline-bundle-package.test.mjs` **PASS 7/7**, `xarchive-desktop --lib components` **PASS 6/6**, `extension` Node tests **PASS 57/57**.
 
-- **W7 `transfer-switch-focus.e2e.mjs`**: **PASS 1/1 (1s)** on `4e427afc` (`78b508cd...`, `target/w7-transfer-switch-4e427afc-20261123181751/runner.log`). Held-busy and user-moved-focus remain open.
-- **W6 Offline Bundle (`target/w6-offline-bundle-4e427afc`)**: 6-component assembly (`desktop`, `worker`, `native-host`, `extension`, `gallery-dl`, `aria2`) + `verifyOfflineBundle` (`catalogVersion: "2026-11-23-w6"`) + WebView2 startup **PASS scoped** (`1/1`, `564ms`, `database: "ready"`, `executor: "ready"`). Versioned release inputs, release-asset activation (`components_active: 0` on embedded `2026-09-20-u9` catalog), and signing remain open.
+- **W7 `transfer-switch-focus.e2e.mjs`**: **PASS 1/1 (1s)** on `4e427afc` (`78b508cd...`, `target/w7-transfer-switch-4e427afc-20261123181751/runner.log`). Held-busy and user-moved-focus WDIO specs approved for the next batch.
+- **W6 Offline Bundle (`target/w6-offline-bundle-4e427afc`)**: 6-component assembly (`desktop`, `worker`, `native-host`, `extension`, `gallery-dl`, `aria2`) + `verifyOfflineBundle` (`catalogVersion: "2026-11-23-w6"`) + WebView2 startup **PASS scoped** (`1/1`, `564ms`, `database: "ready"`, `executor: "ready"`). Versioned release manifest inputs, release-asset activation, and Authenticode signing are routed to the Windows CI / Release pipeline.
 
 Manual Validation Queue (remaining open Windows items):
 
-- W6 Offline Bundle: versioned release inputs, release-asset activation, and signing on Windows.
-- W6 legacy browser pairing: verify automatic migration (`legacy` -> `automatic`, credential kept until ticket auth succeeds) and failure path on real Edge/Chrome registrations.
-- W7 `96f0fa5` / `19dbc22` & GUI/DPI matrix: 100/125/150% OS DPI visual eye-check, populated-state checks, held-busy, and user-moved-focus remain open.
+- W6 Edge browser pairing: verify automatic migration (`legacy` -> `automatic`, credential kept until ticket auth succeeds) and failure path on real **Microsoft Edge** registration once Windows Desktop Control (Computer Use) MCP is mounted (live Chrome testing dropped; Chrome compatibility adapted per Chrome documentation).
+- W7 / UI consistency: populated-state checks (`.preview-table` / non-zero metrics), `Core Bootstrap` missing-catalog `.dependency-missing`, and visual eye-check (200% DPI); `held-busy` and `moved-focus` WDIO specs approved for the next batch.
+- Windows CI / Release pipeline: versioned release manifest inputs, release-asset activation, and Authenticode signing.
 
 `CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878` and the reconciled `8eeb709` W1/W2/W5/W6 Windows changes (including `crates/xarchive-win-job-iocp`).
 
