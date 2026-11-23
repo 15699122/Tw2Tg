@@ -1,9 +1,28 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-22, desktop UI consistency polish)
+## Resume summary — authoritative cursor (2026-11-23, Windows UI consistency acceptance at 4e427afc)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Windows Platform Owner (UI batch scoped WebView2 checks complete; Manual Validation Queue & 100/125/150% DPI / populated-state / W6 real-environment items remain open).
+- Branch: **`codex/windows-validation-7450451b`**.
+- Input revision: **`4e427afca0568cb7e4a9216a1655b1ccd9e606e6`** (`4e427afc`, containing cross-platform UI polish **`4c4c4f93`** on top of `28075a45` / `7450451b`).
+- Built Windows Release artifacts at `4e427afc`:
+  - Standard Release `xarchive-desktop.exe`: SHA-256 `ff82a26814638c8fcdd55511c841a8ac1b22d57040d53143abfaceae76892c6a` (**PASS**).
+  - WDIO dev-channel Release `xarchive-desktop.exe` (`--features wdio-e2e`): SHA-256 `78b508cd3fc008085681c8b032fffc5199e1e44cd5634390aee04c7728f9ec84` (**PASS**).
+- Windows validation executed at `4e427afc` (WebView2 `153.0.4234.48` / `msedgedriver.exe` `153.0.4234.46`, `devicePixelRatio: 2` / 200% DPI, `1080×760` viewport, isolated portable root):
+  - Targeted frontend tests (`settings-render`, `ui-state`, `ui-wiring`): **PASS 101/101** (0 fail, 0 skip).
+  - Real WebView2 WDIO UI consistency checks (`target/ui-consistency-4e427afc-20261123181109/runner.log`): **A1–A4 PASS scoped**; **A5 200% DPI / Light & Dark theme / Tab focus / Empty-zero state PASS scoped** (details in [Windows queue](../validation/windows-queue.md) and [Windows validation history](../validation/windows-validation-history.md)).
+  - **NOT_RUN** (remains in Manual Validation Queue): 100/125/150% OS DPI visual eye-check, populated-state (`.preview-table` / non-zero metrics & jobs), `Core Bootstrap` missing-catalog dashed `.dependency-missing`, real Edge/Chrome legacy-to-automatic pairing, real 6-component Offline Bundle assembly/startup/activation, and W7 held-busy/moved-focus checks.
+  - Stopped proxy session `268c3d0` (PID `66204`): read-only `Get-Process -Id 66204` confirmed **`NOT_PRESENT`**.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-22, desktop UI consistency polish
 
 ### Cursor
 

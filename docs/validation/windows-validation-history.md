@@ -1,5 +1,22 @@
 # Windows Validation History
 
+## Windows UI consistency validation at 4e427afc (4c4c4f93) — 2026-11-23
+
+At input revision `4e427afca0568cb7e4a9216a1655b1ccd9e606e6` (`4e427afc`, containing cross-platform UI polish `4c4c4f93`) on `codex/windows-validation-7450451b`:
+
+- **Builds**:
+  - Standard Windows Release `xarchive-desktop.exe`: **PASS**, SHA-256 `ff82a26814638c8fcdd55511c841a8ac1b22d57040d53143abfaceae76892c6a`.
+  - WDIO dev-channel Windows Release `xarchive-desktop.exe` (`--features wdio-e2e`): **PASS**, SHA-256 `78b508cd3fc008085681c8b032fffc5199e1e44cd5634390aee04c7728f9ec84`.
+- **Frontend targeted tests**:
+  - `node --test desktop/test/settings-render.test.mjs desktop/test/ui-state.test.mjs desktop/test/ui-wiring.test.mjs`: **PASS 101/101** (0 fail, 0 skip).
+- **WebView2 UI consistency checks** (WDIO Release `78b508cd...`, WebView2 `153.0.4234.48` / `msedgedriver.exe` `153.0.4234.46`, `devicePixelRatio: 2` / 200% DPI, `1080×760` viewport, isolated root `target/ui-consistency-root-4e427afc-20261123181109`, evidence `target/ui-consistency-4e427afc-20261123181109/runner.log`):
+  - **A1 Record Import**: **PASS scoped** (2 `.ui-card` panels, 2-col export grid, `.mono-input` root path, `7px`/`10px`/mono textarea, `outline` exports + `default` accept in `.button-row`, polished subtitle); `.preview-table` populated state **NOT_RUN**.
+  - **A2 Download Config**: **PASS scoped** (5 `.settings-panel` cards with `1px`/`10px`, live `#downloader-arguments` error in `.settings-message-error` `rgb(198, 40, 40)`, left-aligned exchange `.button-row`, `aria2` refresh in `.aria2-status-row`, `下载并安装` `<svg>` left).
+  - **A3 Settings**: **PASS scoped** (`body` `overflowY: hidden` + `.main-panel` `overflowY: auto`, note `docScrollH: 1761` with `htmlOverflowY: visible`; single `default` Save per panel; `删除凭据` `ui-button-destructive`; Extension header refresh removed; both `<details>` `listStyleType: none`; Bootstrap solid `.dependency-status`; Telegram 3 `data-tone` dots; 3-col diagnostics grid; Chinese-only proxy copy; `.mono-input` URLs); missing-catalog dashed `.dependency-missing` **NOT_RUN**.
+  - **A4 Dashboard / Jobs**: **PASS scoped** (compact `查看所有下载任务` `134px`/`448px`, `.dashboard-detail` `12px`, zero metrics `metric-default`, 4 `.dashboard-component-link` rows with `data-tone`/`.dashboard-component-dot`/mono name, Jobs refresh in `.topbar-actions`, single-page pagination hidden).
+  - **A5 Matrix**: **PASS scoped** at 200% DPI, Light (`rgb(255, 255, 255)`) & Dark (`data-theme="dark"`, `rgb(23, 25, 28)`), Tab focus (`2px solid` outline), Empty/Zero state; **NOT_RUN** for 100/125/150% OS DPI, populated state, and visual eye-check.
+- **PID `66204` (`268c3d0` stopped session)**: read-only `Get-Process -Id 66204` returned **`NOT_PRESENT`**.
+
 ## Windows validation batch at 7450451b (W3 IPC & W6 non-GUI / aria2) — 2026-11-22
 
 At input revision `7450451be0e8be07eeffbb05c97fef2a05dd5a92` (`7450451b`, containing cross-platform implementation `e9a0c8789de9959756ac4879e0605f7a8c3195bc`, branched from `35ba3479`) on local branch `codex/windows-validation-7450451b` (with prior unpushed local Windows commits `540ce28..8eeb709` preserved separately on `backup/windows-local-8eeb709` / `codex/windows-validation-4ae46ed3` at `8eeb709b93f4df82578ef4aaa9ea2e2feee0d383` for Git reconciliation):
