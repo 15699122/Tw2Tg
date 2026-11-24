@@ -211,7 +211,11 @@ From manual 200% DPI screenshots of `4e427afc` (`78b508cd...`), verified against
   - **Custom aria2 path display (`DownloadConfigPage`)**: before picking a custom path, `自定义 aria2 路径` renders only buttons with no read-only mono path display/placeholder bar.
   - **Output settings vertical spacing & group symmetry (`DownloadConfigPage` / `style.css`)**: check `.settings-fields + .batch-form-options` specificity so `媒体命名` has `12–16px` breathing room above `导出 tweet.json`/`导出 tweet.yaml`; add matching top group heading or remove asymmetric `下载设置` heading; tighten `.settings-help` prose and avoid orphan 2-char line wrap in `.dashboard-detail` (`查看。`).
   - **Focus ring hue (`style.css`)**: `--focus-ring` is `#0067c0` (Windows blue); Cross-platform Owner to decide whether to align with `--accent` (`#2e6f59`) or keep platform blue.
+  - **Disabled button border consistency (`style.css`)**: `.ui-button-outline:disabled` retains `1px` `--border`, while `.ui-button-default:disabled` has `border-color: transparent` (e.g. `检查认证`/`检查目标`/`发送测试消息…` with border next to `验证并替换凭据` without border in Telegram `连接检查`). Unify `.ui-button:disabled` border/surface tokens.
+  - **Input width standards (`style.css`, `telegram-settings.jsx`, `settings-page.jsx`)**: `.telegram-credential-field` (`新 Bot Token`, `max-width: 520px`) and `.proxy-diagnose-fields` (`路由检测地址`, `max-width: 600px`) match neither the 2-column `50%` grid nor `100%` full width; align to `50%` or `100%`.
+  - **Textarea native resize grip (`style.css`)**: `.settings-field textarea` currently sets `resize: vertical`, which still renders WebView2's diagonal resize grip in fixed-width cards; consider `resize: none` or custom-sized rows where appropriate.
 - **Clarifications (no code defect)**:
-  - Toggle checked track in `style.css` already uses `var(--accent)` (`#2e6f59` light / `#3f9077` dark).
+  - Toggle checked track in `style.css` already uses `var(--accent)` (`#2e6f59` light / `#3f9077` dark) across all pages (including `运行日志` and `下载配置`).
   - Dashboard and Jobs empty-state `.empty-icon` already share `1px dashed var(--border-strong)`.
+  - `ComponentBootstrapStatus` (`connection-status.jsx`) already wraps `{bootstrap.catalog_version}` (`2026-09-20-u9`) in `<code>`.
   - Native `<input type="date">` (`yyyy/mm/日`) remains intentionally unchanged per §6.6.
