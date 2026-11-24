@@ -12,7 +12,7 @@ export default function StoragePage({
   return <>
     <PageHeader eyebrow="XARCHIVE / STORAGE" title="存储" description="管理归档媒体文件的本地保存目录。" />
     <div className="settings-layout">
-      <SettingsSection id="archive-storage-settings" title="存储位置" description="选择归档媒体文件保存的本地目录。" icon="folder" expanded={expandedSections.storage ?? false} onToggle={() => toggleSettingsSection("storage")}>
+      <SettingsSection id="archive-storage-settings" title="存储位置" description="选择归档媒体文件保存的本地目录。" icon="folder">
         <div className="settings-section-content">{archiveRoot && <CopyablePath label="当前归档目录" value={archiveRoot} copied={copied === "archive"} onCopy={() => copyPath("archive", archiveRoot)} />}<div className="button-row"><Button variant="outline" disabled={archiveBusy} onClick={chooseArchiveDirectory}>{archiveBusy ? "选择中…" : "更改归档目录"}</Button></div>{archiveError && <Alert message={archiveError} />}</div>
       </SettingsSection>
     </div>

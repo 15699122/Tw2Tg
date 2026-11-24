@@ -2,6 +2,7 @@
 
 Owner: Cross-platform Owner (shared CSS, shared page components, UI primitives in `desktop/src/`), Windows Platform Owner (Windows WebView2 GUI acceptance).
 Status: `IMPLEMENTED_CROSS_PLATFORM` (2026-11-22, `CROSS_PLATFORM_CHANGE_REQUIRED` — UI presentation & component consistency only; does not alter Tauri IPC commands, storage schemas, or sidecar/download protocols). Linux/shared implementation and frontend checks are complete; Windows WebView2 GUI acceptance is pending (§6).
+Round-2 follow-up (§7 findings) is `IMPLEMENTED_CROSS_PLATFORM` (2026-11-24) — see §8; Windows WebView2 acceptance for R1–R7 is `NOT_RUN`.
 
 ## 1. Objective
 
@@ -219,3 +220,110 @@ From manual 200% DPI screenshots of `4e427afc` (`78b508cd...`), verified against
   - Dashboard and Jobs empty-state `.empty-icon` already share `1px dashed var(--border-strong)`.
   - `ComponentBootstrapStatus` (`connection-status.jsx`) already wraps `{bootstrap.catalog_version}` (`2026-09-20-u9`) in `<code>`.
   - Native `<input type="date">` (`yyyy/mm/日`) remains intentionally unchanged per §6.6.
+
+## 8. Implementation record — Round-2, 2026-11-24 (Linux/shared)
+
+Every §7 "code changes needed" item was implemented in `desktop/src/` on
+`codex/windows-validation-7450451b` over source `4e427afc`. None of this section is
+Windows GUI evidence; §7 / §6.8 acceptance stays `NOT_RUN` for the Windows Owner.
+No Tauri IPC command, storage schema, or sidecar/download protocol changed.
+
+### 8.1 R1 — error messages render as an alert strip
+
+- `.settings-message-error` (previously bare text) is now a padded alert block:
+  `border: 1px solid #f0b8b5`, `border-radius: 7px`, `padding: 9px 11px`,
+  `background: var(--danger-surface)`, `color: var(--danger)`, matching `.widget-error`.
+- A scoped `margin-top: 12px` rule separates the strip from the action row above it in
+  `.settings-panel-content` / `.ui-card-content` / `.download-job-entry`.
+- `statusMessageClass(...)` already routed failures here since §6.4; only presentation
+  changed.
+
+### 8.2 R2 — disabled / read-only textarea
+
+- `.settings-field textarea` now sets `resize: none`, so WebView2 no longer paints the
+  diagonal grip that clashed with the `7px` radius inside fixed-width cards (height comes
+  from `rows`).
+- `.settings-field textarea:disabled, .settings-field textarea:read-only` drop to
+  `color: var(--foreground-muted)`, `background: var(--surface-muted)` and
+  `cursor: default` — `#gallery-dl-arguments` is no longer a white editable-looking box.
+
+### 8.3 R3 — one disabled button primitive
+
+- The two overlapping disabled rules collapsed into one selector covering
+  `default`, `secondary`, `outline`, `ghost`, `destructive` and icon-only variants:
+  `color: var(--foreground-muted)`, `border-color: var(--border)`,
+  `background: var(--surface-muted)`, `box-shadow: none`.
+- `.ui-button-destructive:disabled` is folded into the same primitive so a disabled
+  destructive action no longer keeps danger-colored text.
+- The `opacity: .5` primary fill is not reintroduced anywhere (asserted by a regression).
+
+### 8.4 R4 — input width standard
+
+- `.telegram-credential-field` (`新 Bot Token`) goes from `max-width: 520px` to
+  `max-width: none`, matching the other Telegram fields' two-column grid.
+- `.proxy-diagnose-fields` keeps one column but drops `max-width: 600px` to
+  `max-width: none`, so `路由检测地址` uses the full card width instead of a third
+  standard.
+
+### 8.5 R5 — empty and single-panel states
+
+- `shared.jsx` gains `EmptyState({ icon, title, detail })`; `EmptyJobs` is now a thin
+  wrapper over it, so Dashboard and Jobs keep identical markup.
+- `BatchesPage` renders the centered `EmptyState` (`还没有账号归档批次` +
+  `创建批次并开始发现后，候选 Tweet 会显示在这里。`) inside its card instead of a
+  plain left-aligned line of text.
+- `SettingsSection` treats a missing `onToggle` as non-collapsible: it renders
+  `settings-panel-static` with a `settings-panel-static-header` `role="group"` and no
+  chevron. `StoragePage` passes no `onToggle`, so `存储位置` is a static card on a
+  single-panel page.
+
+### 8.6 R6 — layout symmetry and prose wrapping
+
+- `DownloadConfigPage` wraps both halves in symmetric group sections:
+  `<section id="output-settings-group" aria-labelledby>` +
+  `<h2 class="download-section-heading">输出与配置</h2>` mirrors the existing `下载设置`
+  heading; `.download-section-heading` is shared by both.
+- `.settings-fields + .batch-form-options, .settings-fields + .button-row` spacing goes
+  from `16px` to `20px`, giving `媒体命名` breathing room above the export toggles.
+- `.dashboard-detail` adds `text-wrap: pretty`, avoiding the orphan two-character wrap
+  (`查看。`) seen at 200% DPI.
+- `.aria2-path-controls` shows a read-only `PathDisplay` (`当前生效的 aria2 可执行文件`,
+  falling back to `尚未检测到 aria2 可执行文件`) when no custom path is staged, instead of
+  an action row with no path context.
+
+### 8.7 R7 — focus ring decision
+
+- Decision: `--focus-ring` stays `#0067c0` (platform blue). It is the OS focus color the
+  WebView2 host and native controls already use; aligning it to brand `--accent`
+  (`#2e6f59`) would make keyboard focus read as a semantic "success" state. `--accent`
+  remains the brand green for checked toggles and primary emphasis. Recorded here so a
+  later pass does not flip it silently.
+
+### 8.8 WDIO specs approved for this batch
+
+Both are opt-in and skip unless the platform, opt-in flag and isolated-root marker all
+match; neither runs in the default `npm test` path.
+
+| Spec | Opt-in flag | Fixture marker | Contract |
+|---|---|---|---|
+| `desktop/e2e/specs/transfer-switch-held-busy.e2e.mjs` | `WDIO_TRANSFER_HELD_BUSY_GUI=1` | `w7-transfer-held-busy-fixture.marker` = `isolated-transfer-held-busy` | Start the save, then dispatch one non-repeat plus four repeat `Enter` keydowns: the switch must stay disabled, exactly one write must land, and the value must still be `use_aria2: true` after a 1s settle with focus returned to the switch. |
+| `desktop/e2e/specs/transfer-switch-moved-focus.e2e.mjs` | `WDIO_TRANSFER_MOVED_FOCUS_GUI=1` | `w7-transfer-moved-focus-fixture.marker` = `isolated-transfer-moved-focus` | Move focus to the panel toggle in the same task as the click: the settle must not steal focus back, `Enter` must collapse the panel rather than re-apply the switch, and `config.yaml` must still read `use_aria2: true`. |
+
+Both require `XARCHIVE_PORTABLE_ROOT` pointing at an isolated disposable root; they must
+never target the owner's canonical working tree.
+
+### 8.9 Validation (Linux)
+
+| Check | Result |
+|---|---|
+| Desktop Node `npm test` | **PASS** — 284 tests, 281 pass, 3 Windows-only skip, 0 fail (Round-2 source/render assertions for R1–R6) |
+| `cargo test --workspace --offline` | **PASS** |
+| `cargo fmt --all -- --check` | **PASS** |
+| `node scripts/check-architecture.mjs` | **PASS** — 0 findings after the reviewed baseline reseal for the changed `desktop/src` files (no entries added or removed) |
+| `node scripts/docs-audit.mjs` | **PASS** |
+| `git diff --check` | **PASS** |
+
+Not run: any Windows build, WebView2 render, or execution of the two new WDIO specs.
+R1–R7 visual acceptance, 200% DPI eye-check, non-zero Dashboard/Jobs metrics and the
+missing-catalog `.dependency-missing` state remain Windows-owned
+(`docs/validation/windows-queue.md`).

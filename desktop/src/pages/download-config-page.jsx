@@ -5,7 +5,7 @@ import SettingsSection from "../components/settings-section.jsx";
 import { Toggle } from "../components/ui/toggle.jsx";
 import { Badge } from "../components/ui/badge";
 import { aria2StatusText } from "../lib/ui-state.js";
-import { PageHeader, Alert, statusMessageClass } from "./shared.jsx";
+import { PageHeader, Alert, PathDisplay, statusMessageClass } from "./shared.jsx";
 
 /// 下载配置页：媒体传输方式（gallery-dl / aria2）与 aria2 下载引擎管理。
 /// 归档存储位置已拆分到「存储」页，任务记录在「任务记录」页。
@@ -21,6 +21,8 @@ export default function DownloadConfigPage({
 }) {
   return <>
     <PageHeader eyebrow="XARCHIVE / DOWNLOAD CONFIG" title="下载配置" description="选择媒体下载方式并管理 aria2 下载引擎。" />
+    <section id="output-settings-group" className="download-settings-section" aria-labelledby="output-settings-group-title">
+    <h2 id="output-settings-group-title" className="download-section-heading">输出与配置</h2>
     <div className="settings-layout">
     <SettingsSection id="output-settings" title="归档输出设置" description="任务在提交时固定使用当前设置；已提交任务不会随全局设置改变。" icon="file" expanded={expandedSections.output ?? true} onToggle={() => toggleSettingsSection("output")}>
       <div className="settings-section-content">
@@ -60,6 +62,7 @@ export default function DownloadConfigPage({
       </div>
     </SettingsSection>
     </div>
+    </section>
     <section id="download-settings" className="download-settings-section" aria-labelledby="download-settings-title">
       <h2 id="download-settings-title" className="download-section-heading">下载设置</h2>
       <div className="settings-layout">
@@ -73,5 +76,5 @@ export default function DownloadConfigPage({
 }
 
 function Aria2Settings({ installation, busy, pathBusy, error, customPath, pathMessage, copied, copyPath, onRefresh, onDownload, onCheck, onSavePath, onChoose, expanded, onToggle }) {
-  return <SettingsSection id="aria2-settings" title="aria2" description="管理可选下载引擎及其可执行文件路径。" icon="download" expanded={expanded} onToggle={onToggle}><div className="settings-section-content">{error && <Alert message={error} />}<div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{installation.found ? "已检测到" : "未检测到"}</Badge><span>{aria2StatusText(installation)}</span><Button className="aria2-refresh" variant="ghost" size="sm" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={16} />检测</Button></div>{installation.path && <CopyablePath label="当前 aria2 可执行文件" value={installation.path} copied={copied === "aria2"} onCopy={() => copyPath("aria2", installation.path)} />}<div className="aria2-path-controls"><span className="aria2-path-label">自定义 aria2 路径</span><div className="aria2-path-actions"><Button variant="outline" size="sm" onClick={onChoose} disabled={pathBusy}>选择文件</Button><Button variant="outline" size="sm" onClick={onCheck} disabled={pathBusy || !customPath.trim()}>校验</Button><Button size="sm" onClick={onSavePath} disabled={pathBusy || !customPath.trim()}>保存</Button><Button className="aria2-download-button" onClick={onDownload} disabled={busy}><Icon name="download" size={17} />{busy ? "正在下载…" : installation.found ? "重新安装最新版" : "下载并安装"}</Button></div>{customPath && <CopyablePath label="待保存的 aria2 路径" value={customPath} copied={copied === "aria2-custom"} onCopy={() => copyPath("aria2-custom", customPath)} />}{pathMessage && <p className="aria2-help" role="status">{pathMessage}</p>}</div><p className="aria2-help aria2-section-note">仅使用官方 aria2 Windows x64 发布包，下载后会校验 SHA-256；自定义路径必须指向可运行的 aria2c。</p></div></SettingsSection>;
+  return <SettingsSection id="aria2-settings" title="aria2" description="管理可选下载引擎及其可执行文件路径。" icon="download" expanded={expanded} onToggle={onToggle}><div className="settings-section-content">{error && <Alert message={error} />}<div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{installation.found ? "已检测到" : "未检测到"}</Badge><span>{aria2StatusText(installation)}</span><Button className="aria2-refresh" variant="ghost" size="sm" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={16} />检测</Button></div>{installation.path && <CopyablePath label="当前 aria2 可执行文件" value={installation.path} copied={copied === "aria2"} onCopy={() => copyPath("aria2", installation.path)} />}<div className="aria2-path-controls"><span className="aria2-path-label">自定义 aria2 路径</span><div className="aria2-path-actions"><Button variant="outline" size="sm" onClick={onChoose} disabled={pathBusy}>选择文件</Button><Button variant="outline" size="sm" onClick={onCheck} disabled={pathBusy || !customPath.trim()}>校验</Button><Button size="sm" onClick={onSavePath} disabled={pathBusy || !customPath.trim()}>保存</Button><Button className="aria2-download-button" onClick={onDownload} disabled={busy}><Icon name="download" size={17} />{busy ? "正在下载…" : installation.found ? "重新安装最新版" : "下载并安装"}</Button></div>{customPath ? <CopyablePath label="待保存的 aria2 路径" value={customPath} copied={copied === "aria2-custom"} onCopy={() => copyPath("aria2-custom", customPath)} /> : <PathDisplay label="当前生效的 aria2 可执行文件" value={installation.path || "尚未检测到 aria2 可执行文件"} />}{pathMessage && <p className="aria2-help" role="status">{pathMessage}</p>}</div><p className="aria2-help aria2-section-note">仅使用官方 aria2 Windows x64 发布包，下载后会校验 SHA-256；自定义路径必须指向可运行的 aria2c。</p></div></SettingsSection>;
 }

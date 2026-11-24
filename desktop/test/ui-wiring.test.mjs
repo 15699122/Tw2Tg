@@ -751,7 +751,12 @@ test("form controls share one visual contract, including textareas", () => {
   assert.match(textarea, /border-radius: 7px/);
   assert.match(textarea, /padding: 10px/);
   assert.match(textarea, /var\(--font-mono\)/);
-  assert.match(textarea, /resize: vertical/);
+  // The WebView2 diagonal grip clashes with the 7px radius and cannot be
+  // restyled, so the row count defines the height instead.
+  assert.match(textarea, /resize: none/);
+  const readonly = styleSource.match(/\.settings-field textarea:disabled, \.settings-field textarea:read-only \{[^}]*\}/)?.[0] ?? "";
+  assert.match(readonly, /background: var\(--surface-muted\)/);
+  assert.match(readonly, /color: var\(--foreground-muted\)/);
   assert.match(styleSource, /\.settings-field input, \.settings-field select, \.settings-field textarea \{[^}]*border-radius: 7px/);
   // Native `<select>` arrows differ per WebView2 build and ignore control padding.
   const select = styleSource.match(/\.settings-field select, \.logs-toolbar select \{[^}]*\}/)?.[0] ?? "";
@@ -771,9 +776,15 @@ test("the page scroller is the only scroll container and stays subtle", () => {
 });
 
 test("disabled and destructive buttons are visually distinct", () => {
-  const disabled = styleSource.match(/\.ui-button:disabled \{[^}]*\}/)?.[0] ?? "";
+  // One primitive for every variant: the disabled primary used to keep a
+  // different frame from the disabled outline sitting next to it.
+  const disabled = styleSource.match(/\.ui-button:disabled[^{]*\{[^}]*\}/)?.[0] ?? "";
   assert.match(disabled, /background: var\(--surface-muted\)/);
-  assert.doesNotMatch(disabled, /opacity: \.5/);
+  assert.match(disabled, /border-color: var\(--border\)/);
+  for (const variant of ["default", "secondary", "outline", "ghost", "destructive"]) {
+    assert.match(disabled, new RegExp(`\\.ui-button-${variant}:disabled`), variant);
+  }
+  assert.doesNotMatch(styleSource, /\.ui-button:disabled[^{]*\{[^}]*opacity: \.5/);
   assert.match(styleSource, /\.ui-button-destructive \{[^}]*color: var\(--danger\)/);
   // The token existed in the Button map but had no styling at all.
   const telegram = readFileSync(new URL("../src/components/telegram-settings.jsx", import.meta.url), "utf8");
@@ -904,4 +915,83 @@ test("proxy disclosure and URL fields share the stroke-icon and mono conventions
   assert.match(settingsSource, /id="proxy-value" className="mono-input"/);
   assert.match(settingsSource, /id="proxy-diagnose-url" className="mono-input"/);
   assert.match(settingsSource, /<details className="proxy-system-details">/);
+
+// --- 2026-11-24 Round-2 visual polish (200% DPI screenshots) ---------------
+
+test("a failed settings message is an alert strip, not bare red text", () => {
+  const strip = styleSource.match(/\.settings-message-error \{[^}]*\}/)?.[0] ?? "";
+  assert.match(strip, /border: 1px solid #f0b8b5/);
+  assert.match(strip, /border-radius: 7px/);
+  assert.match(strip, /padding: 9px 11px/);
+  assert.match(strip, /background: var\(--danger-surface\)/);
+  assert.match(strip, /color: var\(--danger\)/);
+  // The success caption must stay a caption, not become a strip.
+  const caption = styleSource.match(/\.settings-message \{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(caption, /--danger-surface/);
+  // Inside a panel or card the strip keeps a gap above the action row.
+  assert.match(styleSource, /\.settings-panel-content \.settings-message-error, \.ui-card-content \.settings-message-error, \.download-job-entry > \.settings-message-error \{ margin-top: 12px; \}/);
+});
+
+test("form widths follow the two-column or full-width standard", () => {
+  // 520px/600px caps matched neither the 50% grid nor a full row.
+  const credential = styleSource.match(/\.telegram-credential-field \{[^}]*\}/)?.[0] ?? "";
+  assert.match(credential, /max-width: none/);
+  const diagnose = styleSource.match(/\.proxy-diagnose-fields \{[^}]*\}/)?.[0] ?? "";
+  assert.match(diagnose, /max-width: none/);
+  assert.match(diagnose, /grid-template-columns: minmax\(0, 1fr\)/);
+});
+
+test("a page with a single panel renders it as a static card", () => {
+  const component = readFileSync(new URL("../src/components/settings-section.jsx", import.meta.url), "utf8");
+  assert.match(component, /const collapsible = typeof onToggle === "function"/);
+  assert.match(component, /collapsible \? Boolean\(expanded\) : true/);
+  assert.match(component, /settings-panel-static/);
+  assert.match(component, /settings-panel-static-header/);
+  // 存储位置 is the only panel on its page, so it must not offer a collapse.
+  assert.match(storageSource, /<SettingsSection id="archive-storage-settings"[^>]*icon="folder">/);
+  assert.doesNotMatch(storageSource, /archive-storage-settings"[^>]*onToggle=/);
+  assert.match(styleSource, /\.settings-panel-static \.settings-panel-header \{ padding: 20px 20px 0; \}/);
+});
+
+test("empty states share one centered component", () => {
+  const shared = readFileSync(new URL("../src/pages/shared.jsx", import.meta.url), "utf8");
+  const batches = readFileSync(new URL("../src/pages/batches-page.jsx", import.meta.url), "utf8");
+  assert.match(shared, /export function EmptyState\(\{ icon = "archive", title, detail \}\)/);
+  assert.match(shared, /export function EmptyJobs\(\) \{ return <EmptyState icon="archive" title="还没有归档任务"/);
+  // The batch list used a bare left-aligned line inside CardContent.
+  assert.doesNotMatch(batches, /还没有账号归档批次。/);
+  assert.match(batches, /<EmptyState icon="archive" title="还没有账号归档批次"/);
+  assert.match(batches, /import \{ Alert, EmptyState, MetricCard, PageHeader \} from "\.\/shared\.jsx"/);
+});
+
+test("download config groups both halves under symmetric headings", () => {
+  assert.match(configSource, /<section id="output-settings-group" className="download-settings-section" aria-labelledby="output-settings-group-title">/);
+  assert.match(configSource, /<h2 id="output-settings-group-title" className="download-section-heading">输出与配置<\/h2>/);
+  assert.match(configSource, /<h2 id="download-settings-title" className="download-section-heading">下载设置<\/h2>/);
+  // The fields/toggle gap was too tight at 200% DPI.
+  assert.match(styleSource, /\.settings-fields \+ \.batch-form-options, \.settings-fields \+ \.button-row \{ margin-top: 20px; \}/);
+});
+
+test("the custom aria2 path shows the effective path before a pick", () => {
+  assert.match(configSource, /import \{ PageHeader, Alert, PathDisplay, statusMessageClass \} from "\.\/shared\.jsx"/);
+  assert.match(configSource, /customPath \? <CopyablePath label="待保存的 aria2 路径"[\s\S]{0,260}? : <PathDisplay label="当前生效的 aria2 可执行文件" value=\{installation\.path \|\| "尚未检测到 aria2 可执行文件"\} \/>/);
+});
+
+test("only one scroll container exists and the focus ring stays a platform cue", () => {
+  // `html` can still report the full content height; hiding its overflow proves
+  // the viewport is not a second scroller on any WebView2 build.
+  assert.match(styleSource, /html \{ overflow: hidden; \}/);
+  assert.match(styleSource, /html, body, #root \{ height: 100%; \}/);
+  // Decision: the focus ring keeps the platform blue. The brand green now means
+  // "selected/active control" (toggle track, brand mark) and would be ambiguous.
+  assert.match(styleSource, /--focus-ring: #0067c0/);
+  assert.match(styleSource, /--accent: #2e6f59/);
+  const focus = styleSource.match(/button:focus-visible[^{]*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(focus, /outline: 2px solid var\(--focus-ring\)/);
+});
+
+test("long detail text avoids a one-character orphan line", () => {
+  assert.match(styleSource, /\.dashboard-detail \{[^}]*text-wrap: pretty/);
+});
+
 });

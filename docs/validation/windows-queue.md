@@ -1,6 +1,6 @@
-## Current Windows queue — 2026-11-23
+## Current Windows queue — 2026-11-24
 
-Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b` (reconciled with `backup/windows-local-8eeb709` @ `8eeb709`). Input revision: `4e427afca0568cb7e4a9216a1655b1ccd9e606e6` (`4e427afc`, containing cross-platform UI polish `4c4c4f93` on top of `28075a45` / `7450451b`). The previous source `4ae46ed3` is retained below as history. Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner. Branch: `codex/windows-validation-7450451b` (reconciled with `backup/windows-local-8eeb709` @ `8eeb709`). Input revision: `4e427afca0568cb7e4a9216a1655b1ccd9e606e6` (`4e427afc`, containing cross-platform UI polish `4c4c4f93` on top of `28075a45` / `7450451b`). Cross-platform base for this batch: `b588741726627b07d72c4b71d096c2f8679701e5` (`b5887417`); the handoff revision is the documentation commit after it carrying the Round-2 UI polish, the two new WDIO specs and the architecture baseline reseal — confirm with `git rev-parse codex/windows-validation-7450451b`. The previous source `4ae46ed3` is retained below as history. Results are recorded in [Windows validation history](windows-validation-history.md).
 
 Desktop UI consistency batch (`4c4c4f93` @ `4e427afc`, WebView2 `153.0.4234.48` / `msedgedriver.exe` `153.0.4234.46`, `dpr: 2` / 200% DPI, WDIO Release `78b508cd...`):
 
@@ -9,6 +9,16 @@ Desktop UI consistency batch (`4c4c4f93` @ `4e427afc`, WebView2 `153.0.4234.48` 
 - **A3 Settings**: **PASS scoped** in WebView2 (`body` `overflowY: hidden` + `.main-panel` `overflowY: auto`, note `document.documentElement.scrollHeight` `1761` with `htmlOverflowY: visible`; single primary `default` Save per panel; `删除凭据` `ui-button-destructive`; Extension header refresh removed; both `<details>` `listStyleType: none`; `Core Bootstrap` `.dependency-status` solid; Telegram 3 `data-tone` dots; 9 diagnostics 3-column grid; Chinese-only proxy copy; `.mono-input` URLs). Missing-catalog `.dependency-missing` dashed state: **NOT_RUN**.
 - **A4 Dashboard / Jobs**: **PASS scoped** in WebView2 (compact `查看所有下载任务` `134px` in `448px`; `.dashboard-detail` `12px`; zero metrics `metric-default`; 4 aligned `.dashboard-component-link` rows; Jobs refresh in `.topbar-actions`; single-page pagination hidden).
 - **A5 Matrix**: **200% DPI** (`dpr: 2`), **Light** (`rgb(255, 255, 255)`) & **Dark** (`data-theme="dark"`, `rgb(23, 25, 28)`), **Tab focus** (`2px solid` outline), **Empty/Zero state**: **PASS scoped**. Non-zero Dashboard/Jobs metrics and visual eye-check at current 200% DPI remain **NOT_RUN** in the Manual Validation Queue (100/125/150% OS DPI physical scaling review dropped).
+
+Round-2 UI polish (plan §7/§8, implemented on `b5887417`; Windows acceptance **NOT_RUN**, to be verified against a fresh WebView2 build):
+- **R1 Error strip**: `.settings-message-error` must render `--danger-surface` + `7px` radius alert strip (not bare red text above action buttons).
+- **R2 Disabled textarea**: must render muted `--surface-muted` background with `resize: none` (no WebView2 diagonal grip).
+- **R3 Disabled buttons**: one disabled primitive for all variants (same border/surface, no opacity).
+- **R4 Input widths**: Telegram credential field and proxy diagnose URL must use full width (`max-width: none`).
+- **R5 Empty states**: `BatchesPage` empty state must use centered `EmptyState` icon component; `StoragePage` single panel must be non-collapsible `<Card>`.
+- **R6 Layout**: `输出与配置` top heading mirrors `下载设置`; `.settings-fields + .batch-form-options` gap `20px`; `.dashboard-detail` `text-wrap: pretty`.
+- **R7 Focus ring**: `--focus-ring` kept at `#0067c0` (platform blue decision).
+- **WDIO specs**: `transfer-switch-held-busy.e2e.mjs` and `transfer-switch-moved-focus.e2e.mjs` added (opt-in via `WDIO_TRANSFER_HELD_BUSY_GUI` / `WDIO_TRANSFER_MOVED_FOCUS_GUI`, isolated portable root marker) — to run against real WebView2 in this batch.
 
 Windows validation outcomes at `7450451b`:
 
@@ -25,7 +35,7 @@ Windows validation outcomes at `7450451b`:
 
 Manual Validation Queue (remaining open Windows items):
 
-- W7 / UI consistency: non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog `.dependency-missing`, and visual eye-check (200% DPI); `held-busy` and `moved-focus` WDIO specs approved for the next batch.
+- W7 / UI consistency: non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog `.dependency-missing`, and visual eye-check (200% DPI); run `held-busy` and `moved-focus` WDIO specs against a fresh `--features wdio-e2e` Release build (each with its own isolated portable root marker).
 - Windows CI / Release pipeline: versioned release manifest inputs, release-asset activation, and Authenticode signing.
 
 `CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878` and the reconciled `8eeb709` W1/W2/W5/W6 Windows changes (including `crates/xarchive-win-job-iocp`).

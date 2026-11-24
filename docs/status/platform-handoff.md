@@ -1,15 +1,16 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-24, Windows handoff to Cross-platform Owner)
+## Resume summary — authoritative cursor (2026-11-24, Cross-platform batch from `b5887417`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**).
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**).
 - Branch: **`codex/windows-validation-7450451b`**.
-- Input revision: **`4e427afca0568cb7e4a9216a1655b1ccd9e606e6`** (`4e427afc`, containing cross-platform UI polish **`4c4c4f93`** on top of `28075a45` / `7450451b`).
+- Input revision: **`4e427afca0568cb7e4a9216a1655b1ccd9e606e6`** (`4e427afc`, containing cross-platform UI polish **`4c4c4f93`** on top of `28075a45` / `7450451b`; Windows batch `ba86b31` reconciled the preserved local 30 commits `540ce28..8eeb709` into this branch).
+- Cross-platform handoff base: **`b588741726627b07d72c4b71d096c2f8679701e5`** (`b5887417` — Windows validation replay + architecture baseline reseal). The handoff revision for this batch is the documentation commit **after** `b5887417`; confirm it with `git rev-parse codex/windows-validation-7450451b` rather than assuming `b5887417` is the tip.
 - Built Windows Release artifacts at `4e427afc`:
   - Standard Release `xarchive-desktop.exe`: SHA-256 `ff82a26814638c8fcdd55511c841a8ac1b22d57040d53143abfaceae76892c6a` (**PASS**).
   - WDIO dev-channel Release `xarchive-desktop.exe` (`--features wdio-e2e`): SHA-256 `78b508cd3fc008085681c8b032fffc5199e1e44cd5634390aee04c7728f9ec84` (**PASS**).
@@ -21,9 +22,14 @@
   - W6 Real **Microsoft Edge `159.0.4402.13`** pairing migration (`msedgedriver 159.0.4402.13`, `extId: iaajefkoanbkleojofoadeakelihbjne`, `msedgedriver-153.0.4234.46` removed): **PASS** — success path (`legacy` `"synthetic-legacy-token"` → `automatic` via `com.tw2tg.xarchive` Native Host, `websocket.authenticated: true`, `port: 56657`, `token: ""` cleared) and failure path (`Specified native messaging host not found.`, `mode: "legacy"` + `token: "synthetic-legacy-token"` retained in `chrome.storage.local`) both verified on real Edge.
   - **NOT_RUN** (remains in Manual Validation Queue / next batch): non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog dashed `.dependency-missing`, and visual eye-check at current 200% DPI (`windows-computer-use` `Screenshot` on `Active Desktop: Backend` did not show launched `xarchive-desktop.exe`).
   - **Routed to Windows CI / Release pipeline**: Offline Bundle versioned release manifest inputs, release-asset activation, and Authenticode code signing.
-  - **Approved for next batch**: adding `held-busy` and `moved-focus` Desktop WDIO E2E specs (`transfer-switch-focus` `Space`/`Enter` already **PASS 1/1**), plus Round-2 UI polish items from 2026-11-24 200% DPI manual screenshots in [the plan §7](../development/desktop-ui-consistency-polish-plan.md#7-follow-up-visual-review-findings--2026-11-24-200-dpi-windows-screenshots) (`CROSS_PLATFORM_CHANGE_REQUIRED`).
+  - **Implemented in this handoff revision (`b5887417`, Cross-platform Owner)**: Round-2 UI polish R1–R7 from [the plan §7](../development/desktop-ui-consistency-polish-plan.md#7-follow-up-visual-review-findings--2026-11-24-200-dpi-windows-screenshots) plus the two `held-busy` / `moved-focus` opt-in Desktop WDIO specs. Implementation record: plan §8. Windows WebView2 acceptance for R1–R7 is `NOT_RUN`.
+  - **Linux validation for `b5887417`**: `cargo test --workspace --offline` **PASS**; Desktop Node `npm test` **284 tests / 281 pass / 3 Windows-only skip / 0 fail**; `cargo fmt --all -- --check` **PASS**; `node scripts/check-architecture.mjs` **0 findings** (baseline resealed only for changed shared UI files, no entries added or removed); `node scripts/docs-audit.mjs` **PASS**; `git diff --check` **PASS**.
   - **Dropped from queue**: 100/125/150% OS DPI physical scaling review (200% DPI WebView2 verified).
   - Branch reconciliation: **`backup/windows-local-8eeb709` (`8eeb709`, 30 commits `540ce28..8eeb709`) reconciled via Git merge** into `codex/windows-validation-7450451b` (preserving `e9a0c87` partial-refresh retry + `40d0fb6` unvisited-transfer cancellation + `8eeb709` W1/W2/W5/W6 containment/recovery/credentials/tests; `xarchive-download --lib` **PASS 52/52**, `xarchive-workflow --lib` **PASS 24/24**, `xarchive-workflow --test windows_native` **PASS 22/22 (3 volume-8.3 ignored)**, `xarchive-desktop --lib executor::` **PASS 91/91**, `desktop` Node **PASS 276**, `extension` Node **PASS 57**, `check-architecture` **0 findings**). `CROSS_PLATFORM_REVIEW_REQUIRED` for `crates/xarchive-win-job-iocp`, `driver.rs`, `production/transfer.rs`, and `scripts/architecture-baseline.json`.
+- Windows next actions for this handoff (all `NOT_RUN`, see [Windows queue](../validation/windows-queue.md)):
+  - Real WebView2 acceptance of R1–R7 (`.settings-message-error` alert strip, muted read-only textarea with no resize grip, unified disabled buttons, full-width Telegram/diagnose inputs, `EmptyState` on Batches, non-collapsible Storage card, `输出与配置` symmetry and 20px gap, `text-wrap: pretty`) at 200% DPI, light and dark.
+  - Run `transfer-switch-held-busy.e2e.mjs` (`WDIO_TRANSFER_HELD_BUSY_GUI=1`) and `transfer-switch-moved-focus.e2e.mjs` (`WDIO_TRANSFER_MOVED_FOCUS_GUI=1`) against a freshly built `--features wdio-e2e` Release executable, each with its own isolated `XARCHIVE_PORTABLE_ROOT` marker.
+  - Still open from `4e427afc`: non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog `.dependency-missing`, and the 200% DPI visual eye-check.
 - Stopped proxy session `268c3d0` (PID `66204`): read-only `Get-Process -Id 66204` confirmed **`NOT_PRESENT`**.
 - `WINDOWS_BLOCKING`: **none**.
 
@@ -81,6 +87,8 @@ keep that origin visible and reconcile through Git, not by copying files.
 | Dashboard / Jobs | Compact `.jobs-footer` action, defined `.dashboard-detail` at 12px, component rows as a dot/mono-name/state grid, neutral zero metrics on Dashboard and Account Batch, single-page pagination hidden, refresh in `<PageHeader>`, `.empty-icon` confirmed unified. |
 | Download config | `statusMessageClass(...)` for all four messages (failures in `--danger`), top panels grouped in `.settings-layout`, exchange actions in one left-aligned `.button-row`, aria2 refresh moved into the panel body, download icon on the left, no far-right primary. |
 | Settings / Telegram | One primary save per panel, inspection actions demoted to `outline`, `删除凭据` as `destructive`, no refresh beside the collapse chevron, stroke chevrons for both `<details>`, solid Bootstrap framing with dashed only when missing, semantic Telegram status dots, 3×3 diagnostics grid, Chinese-only proxy copy, mono URLs/identifiers. |
+| Round-2 UI polish (§7, 200% DPI screenshots) | `.settings-message-error` padded `--danger-surface` + `7px` radius alert strip; `.settings-field textarea:disabled/:read-only` muted `--surface-muted` surface with `resize: none`; one disabled primitive for all button variants (same border/surface, no opacity); Telegram credential field and proxy diagnose URL expanded to full width (`max-width: none`); `BatchesPage` empty state uses centered `EmptyState` icon component; `StoragePage` single panel is non-collapsible `<Card>`; Download Config custom aria2 path shows a read-only mono `PathDisplay` placeholder before a pick; `.settings-fields + .batch-form-options` gap `20px`; top group heading `输出与配置` mirrors `下载设置`; `.dashboard-detail` uses `text-wrap: pretty`; `--focus-ring` kept at `#0067c0` (platform blue decision, not `--accent`). |
+| Shared WDIO E2E specs | `transfer-switch-held-busy.e2e.mjs` and `transfer-switch-moved-focus.e2e.mjs` added (opt-in via `WDIO_TRANSFER_HELD_BUSY_GUI` / `WDIO_TRANSFER_MOVED_FOCUS_GUI`, isolated portable root marker); Windows Owner to run in the next batch. |
 | Tests | 14 new assertions across `desktop/test/ui-wiring.test.mjs` (source contracts) and one new render test in `desktop/test/settings-render.test.mjs`; the two proxy-copy tests were updated to the localized contract instead of the old bilingual string. |
 
 The per-item detail, including the three deliberate non-changes (native date inputs,
@@ -90,33 +98,44 @@ The per-item detail, including the three deliberate non-changes (native date inp
 
 | Check | Result |
 |---|---|
-| Desktop Node `npm test` | **PASS** — 276 tests, 273 pass, 3 Windows-only skip, 0 fail |
+| `cargo test --workspace --offline` | **PASS** — every workspace member green (desktop lib, storage, download 54/54, workflow 24/24, workflow windows_native 22/22 (3 ignored), sidecar-supervisor, protocol, native-host, core, `xarchive-win-job-iocp`, doctests) |
+| Desktop Node `npm test` | **PASS** — 284 tests, 281 pass, 3 Windows-only skip, 0 fail |
 | `npm run check` (Vite build) | **PASS** (only the pre-existing dynamic-import chunk warning) |
-| `node scripts/check-architecture.mjs` | **PASS** — 283 files, 28 relative edges, **0 findings** after the reviewed baseline reseal for the five changed `desktop/src` files |
+| `node scripts/check-architecture.mjs` | **PASS** — 287 files, 28 relative edges, **0 findings** after resealing baseline for the three changed shared files (`settings-section.jsx`, `download-config-page.jsx`, `shared.jsx`) |
 | `node scripts/docs-audit.mjs` | **PASS** |
 | `git diff --check` | **PASS** |
-| `cargo check -p xarchive-desktop --lib --offline` | **PASS** — no Rust source changed in this batch; this only proves the branch still builds |
+| `cargo fmt --all -- --check` | **PASS** |
 
-No Rust behaviour changed in this batch, so the `e9a0c878` Rust results are not
-re-claimed here. Nothing in this section is Windows evidence.
+No shared-contract behaviour changed in this batch; `TransferFailure.completed`, the
+preview revision derivation, and the executor replacement contract from the previous
+batch remain intact and are not re-claimed. Nothing in this section is Windows evidence.
 
 ### Windows work required
 
-1. Build a Release artifact from the handoff revision and run the UI acceptance matrix
-   in [the plan §6.8](../development/desktop-ui-consistency-polish-plan.md#68-windows-acceptance-still-required):
-   Record Import cards/mono/exports, Download Config error color and action rows,
-   Settings single scrollbar and button hierarchy, the two disclosure chevrons,
-   Bootstrap solid/dashed, Telegram status dots, the 3×3 diagnostics grid, no
-   mixed-language proxy copy, Dashboard/Jobs compact action and 12px detail scale,
-   neutral zero metrics, hidden single-page pagination.
-2. Every item above is a visual property. The Linux checks are source and render
+1. Build a Release artifact from the handoff revision (`b5887417`) and run the UI
+   acceptance matrix in [the plan §6.8](../development/desktop-ui-consistency-polish-plan.md#68-windows-acceptance-still-required):
+   Record Import cards/mono/exports, Download Config error color (`--danger-surface`
+   strip, not bare red text) and action rows, Settings single scrollbar and button
+   hierarchy, the two disclosure chevrons, Bootstrap solid/dashed, Telegram status dots,
+   the 3×3 diagnostics grid, no mixed-language proxy copy, Dashboard/Jobs compact action
+   and 12px detail scale, neutral zero metrics, hidden single-page pagination.
+2. Run the Round-2 polish items from §7 on real WebView2 at 200% DPI: error alert strip,
+   disabled textarea muted surface without resize grip, one disabled primitive across all
+   button variants, full-width Telegram credential field and proxy diagnose URL, centered
+   `BatchesPage` empty state, static non-collapsible `StoragePage` card, read-only mono
+   aria2 path placeholder, `输出与配置` top heading, 20px field/toggle gap, text-wrap
+   `.dashboard-detail`, platform-blue focus ring.
+3. Run the two approved WDIO E2E specs (`transfer-switch-held-busy.e2e.mjs`,
+   `transfer-switch-moved-focus.e2e.mjs`, opt-in via
+   `WDIO_TRANSFER_HELD_BUSY_GUI` / `WDIO_TRANSFER_MOVED_FOCUS_GUI`).
+4. Every GUI item above is a visual property. The Linux checks are source and render
    contracts only; light/dark contrast, DPI 100/125/150/200 %, focus order and the
    single-scrollbar claim must be confirmed by eye on WebView2.
-3. Keep the remaining Manual Validation Queue: real Edge/Chrome legacy-to-automatic
+5. Keep the remaining Manual Validation Queue: real Edge/Chrome legacy-to-automatic
    pairing migration and its failure path, real six-component Offline Bundle
    assembly/startup/activation, W7 GUI/DPI matrix and held-busy/moved-focus checks, and
    the user-stopped proxy session `268c3d0` (PID `66204`, do not operate or close it).
-4. Preserve the 30 unpushed commit history described above and reconcile it through Git.
+6. Preserve the 30 unpushed commit history described above and reconcile it through Git.
 
 ### Windows validation required
 
@@ -140,9 +159,11 @@ IPC, storage or protocol change, so no new automated Windows check is introduced
 
 ### Next owner
 
-Cross-platform Owner → Windows Platform Owner. Fetch the branch, check out its tip,
-confirm the revision above, build, and start with the Settings and Download Config pages
-(single scrollbar and error-color rendering are the two most visible changes).
+Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**). Fetch the branch,
+check out its tip (`b5887417`), confirm the revisions above, build the Release artifacts,
+and start with the Settings and Download Config pages (single scrollbar and error-color
+rendering are the two most visible changes), then the Round-2 polish matrix at 200% DPI
+and the two approved WDIO specs.
 
 
 
