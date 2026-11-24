@@ -198,3 +198,20 @@ order and visual acceptance remain Windows-owned (§5.2).
    metrics, aligned component rows, no pagination for a single page, refresh in the page
    header.
 5. Light and dark themes, keyboard focus visibility, and populated vs empty states.
+
+## 7. Follow-up Visual Review Findings — 2026-11-24 (200% DPI Windows Screenshots)
+
+From manual 200% DPI screenshots of `4e427afc` (`78b508cd...`), verified against `desktop/src/` (`CROSS_PLATFORM_CHANGE_REQUIRED`, Cross-platform Owner):
+
+- **Confirmed code changes needed**:
+  - **Error message container (`DownloadConfigPage` / `style.css`)**: `.settings-message-error` renders bare red text tightly above action buttons instead of a padded `--danger-surface` + `7px` radius alert strip (like `.widget-error`).
+  - **Disabled `<textarea>` styling (`style.css`)**: `.settings-field textarea` lacks `:disabled` / `:read-only` styling, leaving `#gallery-dl-arguments` with `#fff` background and `resize: vertical` handle; set `background: var(--surface-muted); resize: none;` when disabled.
+  - **Account Batch empty state (`BatchesPage`)**: `还没有账号归档批次。` renders as a plain left-aligned `<CardContent>` line instead of the centered icon + title + subtitle empty-state pattern used by `EmptyJobs`.
+  - **Storage single-card page (`StoragePage`)**: uses collapsible `<SettingsSection>` with a chevron even though `存储位置` is the only card on the page; switch to a non-collapsible `<Card>`.
+  - **Custom aria2 path display (`DownloadConfigPage`)**: before picking a custom path, `自定义 aria2 路径` renders only buttons with no read-only mono path display/placeholder bar.
+  - **Output settings vertical spacing & group symmetry (`DownloadConfigPage` / `style.css`)**: check `.settings-fields + .batch-form-options` specificity so `媒体命名` has `12–16px` breathing room above `导出 tweet.json`/`导出 tweet.yaml`; add matching top group heading or remove asymmetric `下载设置` heading; tighten `.settings-help` prose and avoid orphan 2-char line wrap in `.dashboard-detail` (`查看。`).
+  - **Focus ring hue (`style.css`)**: `--focus-ring` is `#0067c0` (Windows blue); Cross-platform Owner to decide whether to align with `--accent` (`#2e6f59`) or keep platform blue.
+- **Clarifications (no code defect)**:
+  - Toggle checked track in `style.css` already uses `var(--accent)` (`#2e6f59` light / `#3f9077` dark).
+  - Dashboard and Jobs empty-state `.empty-icon` already share `1px dashed var(--border-strong)`.
+  - Native `<input type="date">` (`yyyy/mm/日`) remains intentionally unchanged per §6.6.
