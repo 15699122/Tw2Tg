@@ -1,13 +1,13 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-23, Windows UI consistency acceptance at 4e427afc)
+## Resume summary — authoritative cursor (2026-11-24, Windows handoff to Cross-platform Owner)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Windows Platform Owner (UI batch scoped WebView2 checks complete; Manual Validation Queue & 100/125/150% DPI / populated-state / W6 real-environment items remain open).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**).
 - Branch: **`codex/windows-validation-7450451b`**.
 - Input revision: **`4e427afca0568cb7e4a9216a1655b1ccd9e606e6`** (`4e427afc`, containing cross-platform UI polish **`4c4c4f93`** on top of `28075a45` / `7450451b`).
 - Built Windows Release artifacts at `4e427afc`:
@@ -23,7 +23,7 @@
   - **Routed to Windows CI / Release pipeline**: Offline Bundle versioned release manifest inputs, release-asset activation, and Authenticode code signing.
   - **Approved for next batch**: adding `held-busy` and `moved-focus` Desktop WDIO E2E specs (`transfer-switch-focus` `Space`/`Enter` already **PASS 1/1**), plus Round-2 UI polish items from 2026-11-24 200% DPI manual screenshots in [the plan §7](../development/desktop-ui-consistency-polish-plan.md#7-follow-up-visual-review-findings--2026-11-24-200-dpi-windows-screenshots) (`CROSS_PLATFORM_CHANGE_REQUIRED`).
   - **Dropped from queue**: 100/125/150% OS DPI physical scaling review (200% DPI WebView2 verified).
-  - Branch reconciliation: **`backup/windows-local-8eeb709` (`8eeb709`, 30 commits `540ce28..8eeb709`) reconciled via Git merge** into `codex/windows-validation-7450451b` (preserving `e9a0c87` partial-refresh retry + `40d0fb6` unvisited-transfer cancellation + `8eeb709` W1/W2/W5/W6 containment/recovery/credentials/tests; `xarchive-download --lib` **PASS 52/52**, `xarchive-workflow --lib` **PASS 24/24**, `cargo check -p xarchive-desktop --tests` **PASS**, `check-architecture` **0 findings**). `CROSS_PLATFORM_REVIEW_REQUIRED` for `crates/xarchive-win-job-iocp`, `driver.rs`, `production/transfer.rs`, and `scripts/architecture-baseline.json`.
+  - Branch reconciliation: **`backup/windows-local-8eeb709` (`8eeb709`, 30 commits `540ce28..8eeb709`) reconciled via Git merge** into `codex/windows-validation-7450451b` (preserving `e9a0c87` partial-refresh retry + `40d0fb6` unvisited-transfer cancellation + `8eeb709` W1/W2/W5/W6 containment/recovery/credentials/tests; `xarchive-download --lib` **PASS 52/52**, `xarchive-workflow --lib` **PASS 24/24**, `xarchive-workflow --test windows_native` **PASS 22/22 (3 volume-8.3 ignored)**, `xarchive-desktop --lib executor::` **PASS 91/91**, `desktop` Node **PASS 276**, `extension` Node **PASS 57**, `check-architecture` **0 findings**). `CROSS_PLATFORM_REVIEW_REQUIRED` for `crates/xarchive-win-job-iocp`, `driver.rs`, `production/transfer.rs`, and `scripts/architecture-baseline.json`.
 - Stopped proxy session `268c3d0` (PID `66204`): read-only `Get-Process -Id 66204` confirmed **`NOT_PRESENT`**.
 - `WINDOWS_BLOCKING`: **none**.
 
