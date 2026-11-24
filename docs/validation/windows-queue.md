@@ -21,10 +21,11 @@ Windows validation outcomes at `7450451b`:
 - **W7 `transfer-switch-focus.e2e.mjs`**: **PASS 1/1 (1s)** on `4e427afc` (`78b508cd...`, `target/w7-transfer-switch-4e427afc-20261123181751/runner.log`). Held-busy and user-moved-focus WDIO specs approved for the next batch.
 - **W6 Offline Bundle (`target/w6-offline-bundle-4e427afc`)**: 6-component assembly (`desktop`, `worker`, `native-host`, `extension`, `gallery-dl`, `aria2`) + `verifyOfflineBundle` (`catalogVersion: "2026-11-23-w6"`) + WebView2 startup **PASS scoped** (`1/1`, `564ms`, `database: "ready"`, `executor: "ready"`). Versioned release manifest inputs, release-asset activation, and Authenticode signing are routed to the Windows CI / Release pipeline.
 
+- **W6 Real Microsoft Edge `159.0.4402.13` pairing (`msedgedriver 159.0.4402.13`, `extId: iaajefkoanbkleojofoadeakelihbjne`)**: **PASS** — `legacy` → `automatic` migration cleared `"synthetic-legacy-token"` only after WebSocket ticket authentication (`authenticated: true`, `port: 56657`), and Native Host failure (`Specified native messaging host not found.`) retained `mode: "legacy"` and `"synthetic-legacy-token"`. `msedgedriver-153.0.4234.46` removed.
+
 Manual Validation Queue (remaining open Windows items):
 
-- W6 Edge browser pairing: verify automatic migration (`legacy` -> `automatic`, credential kept until ticket auth succeeds) and failure path on real **Microsoft Edge** registration once Windows Desktop Control (Computer Use) MCP is mounted (live Chrome testing dropped; Chrome compatibility adapted per Chrome documentation).
-- W7 / UI consistency: populated-state checks (`.preview-table` / non-zero metrics), `Core Bootstrap` missing-catalog `.dependency-missing`, and visual eye-check (200% DPI); `held-busy` and `moved-focus` WDIO specs approved for the next batch.
+- W7 / UI consistency: non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog `.dependency-missing`, and visual eye-check (200% DPI); `held-busy` and `moved-focus` WDIO specs approved for the next batch.
 - Windows CI / Release pipeline: versioned release manifest inputs, release-asset activation, and Authenticode signing.
 
 `CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared source, test and baseline changes in `e9a0c878` and the reconciled `8eeb709` W1/W2/W5/W6 Windows changes (including `crates/xarchive-win-job-iocp`).
