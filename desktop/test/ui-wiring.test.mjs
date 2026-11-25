@@ -928,8 +928,13 @@ test("a failed settings message is an alert strip, not bare red text", () => {
   // The success caption must stay a caption, not become a strip.
   const caption = styleSource.match(/\.settings-message \{[^}]*\}/)?.[0] ?? "";
   assert.doesNotMatch(caption, /--danger-surface/);
-  // Inside a panel or card the strip keeps a gap above the action row.
-  assert.match(styleSource, /\.settings-panel-content \.settings-message-error, \.ui-card-content \.settings-message-error, \.download-job-entry > \.settings-message-error \{ margin-top: 12px; \}/);
+  // Inside a panel or card the strip keeps a gap above the action row, and must
+  // follow the `margin: 0` resets of equal specificity so `margin-top: 12px` wins.
+  const errorMarginRule = ".settings-panel-content .settings-message-error, .ui-card-content .settings-message-error, .download-job-entry > .settings-message-error { margin-top: 12px; }";
+  const errorMarginIndex = styleSource.indexOf(errorMarginRule);
+  assert.notEqual(errorMarginIndex, -1);
+  assert.ok(errorMarginIndex > styleSource.indexOf(".settings-panel-content .settings-message { margin: 0; }"));
+  assert.ok(errorMarginIndex > styleSource.indexOf(".download-job-entry > .settings-message {"));
 });
 
 test("form widths follow the two-column or full-width standard", () => {

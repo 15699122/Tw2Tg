@@ -1,9 +1,32 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-25, Windows batch at `b2a41a45`)
+## Resume summary — authoritative cursor (2026-11-25, R1 cascade fix & R7 review)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**).
+- Branch: **`codex/windows-validation-7450451b`**.
+- Input revision: **`b537b43a4393cca1be1a117a2eda83c10159c7d2`** (`b537b43a`, Windows `b2a41a45` validation write-back).
+- Cross-platform work completed (this batch):
+  1. **R1 `.settings-message-error` `margin-top` fix (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: moved `.settings-panel-content .settings-message-error, .ui-card-content .settings-message-error, .download-job-entry > .settings-message-error { margin-top: 12px; }` in [`desktop/src/style.css`](../../desktop/src/style.css) after `.settings-panel-content .settings-message { margin: 0; }` (and `.download-job-entry > .settings-message { margin: 0; ... }`), preserving all alert-strip border/radius/background/padding rules. Added source-order cascade assertions in [`desktop/test/ui-wiring.test.mjs`](../../desktop/test/ui-wiring.test.mjs).
+  2. **R7 `window.scrollTo` review (`CROSS_PLATFORM_REVIEW_REQUIRED`)**: evaluated and confirmed **keep as-is** (`html { overflow: hidden; }`). In Chromium/WebView2, `overflow: hidden` hides user scrollbars and blocks wheel/touch/keyboard scrolling of the root document while still allowing programmatic `window.scrollTo`; `.app-shell` (`height: 100vh; overflow: hidden`) and `.main-panel` (`overflow: auto`) already isolate interactive/focus scrolling inside `.main-panel`, so no additional root-scroll constraint is needed.
+- Linux validation gates executed after final code edit:
+  - `cargo test --workspace --offline`: **PASS**
+  - `npm --prefix desktop test`: **PASS** (`tests 284`, `suites 17`, `pass 281`, `fail 0`, `skipped 3` Windows-only skips)
+  - `npm --prefix desktop run build`: **PASS** (Vite production build, `1.83s`)
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 44 js/ts, 28 relative edges, 0 findings`)
+  - `node scripts/docs-audit.mjs`: **PASS**
+  - `git diff --check`: **PASS**
+- Windows work required:
+  - Re-verify **R1** (`marginTop: 12px` on `.settings-message-error` inside `#downloader-arguments .settings-panel-content` in Light + Dark) on a fresh build from this handoff commit. R2–R6, R7 focus ring, and the three opt-in W7 WDIO specs (`transfer-switch-focus`, `transfer-switch-held-busy`, `transfer-switch-moved-focus`) already passed at `b2a41a45`.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-25, Windows batch at `b2a41a45`
 
 ### Cursor
 
