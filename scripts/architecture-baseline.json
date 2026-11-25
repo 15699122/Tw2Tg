@@ -1068,8 +1068,8 @@
     },
     "desktop/src-tauri/src/system_proxy_resolver.rs": {
       "category": "rust-desktop",
-      "lines": 567,
-      "sha256": "8b4d1ec2251bb5a5335dfc4947f4b0c479b4aac3e62d80100b9a971903b32ecb"
+      "lines": 569,
+      "sha256": "35ff308f2c5d2d2b7d1b00400049b0d5384b9233324d99f941603d9767491e62"
     },
     "desktop/src-tauri/src/telegram_control.rs": {
       "category": "rust-desktop",

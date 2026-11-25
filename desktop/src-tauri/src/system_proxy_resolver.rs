@@ -433,6 +433,7 @@ mod tests {
                 while !shutdown.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
+                            let _ = stream.set_nonblocking(false);
                             stream
                                 .set_read_timeout(Some(Duration::from_secs(1)))
                                 .unwrap();
@@ -443,6 +444,7 @@ mod tests {
                                 body.len()
                             );
                             let _ = stream.write_all(response.as_bytes());
+                            let _ = stream.flush();
                         }
                         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(5))
