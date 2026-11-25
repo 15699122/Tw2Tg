@@ -10,20 +10,21 @@ fn attempt_staging_resolution_requires_matching_identity_and_isolates_attempts()
     let archive = root.join("archive");
     let staging = root.join("staging");
     let files = FileStore::with_staging_root(&archive, &staging).expect("file store");
-    let supervisor_script = root.join("sidecar-stub.sh");
-    std::fs::write(&supervisor_script, "#!/bin/sh\ncat >/dev/null\n").expect("script");
     #[cfg(unix)]
-    {
+    let supervisor = {
         use std::os::unix::fs::PermissionsExt;
+        let supervisor_script = root.join("sidecar-stub.sh");
+        std::fs::write(&supervisor_script, "#!/bin/sh\ncat >/dev/null\n").expect("script");
         let mut permissions = std::fs::metadata(&supervisor_script)
             .expect("script metadata")
             .permissions();
         permissions.set_mode(0o700);
         std::fs::set_permissions(&supervisor_script, permissions).expect("script mode");
-    }
-    let supervisor =
         SidecarSupervisor::spawn(supervisor_script.to_str().expect("script path"), &[])
-            .expect("supervisor");
+            .expect("supervisor")
+    };
+    #[cfg(windows)]
+    let supervisor = SidecarSupervisor::spawn("cmd.exe", &["/C", "more >nul"]).expect("supervisor");
     let mut context = ArchiveExecutionContext::with_aria2_and_network(
         Database::open(root.join("db.sqlite3")).expect("database"),
         files,
