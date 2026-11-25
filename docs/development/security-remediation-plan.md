@@ -4,6 +4,34 @@
 > 本文是**计划与当前状态**，不是验证证据；验证结果写入 [`../validation/windows-queue.md`](../validation/windows-queue.md) 和 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md)。
 > 风险等级结论见 [`risk-register.md`](risk-register.md) RISK-023 与 RISK-026。
 
+## 7. 2026-11-25 依赖与安全告警复核（`v0.2.1-pre2` 后）
+
+评估基线：2026-11-25 通过 GitHub API 核对全部 Open PR（#14–#16）、CodeQL（0 open）、Secret Scanning（0 open）及全部 22 条 Open Dependabot 告警（10 high / 8 moderate / 4 low），并与 `dev` 分支（`76d71fd6`）实际 lockfile 对照。
+
+### 7.1 已并入 `dev` 的可立即完成项（PR #14 / #15 / #16）
+
+以下 3 个指向 `main` 的 Open PR 实际均已在 `dev` 分支集成并通过验证，当前仅因 `main` 尚未合流 `dev` 而在 GitHub 上维持 Open：
+
+| PR / 告警 | 内容 | `dev` 集成状态 | 影响说明 |
+|---|---|---|---|
+| PR #14 / Dependabot #16–#20 | `vite` `7.3.6 → 7.3.7`（`desktop/package.json`、`package-lock.json`） | 已在 `dev` 合入（`5eef7e4f`） | 关闭 5 条 `vite` / `launch-editor` 开发期告警（1 high / 3 medium / 1 low） |
+| PR #15 | `.github/dependabot.yml` 为 `npm-security` 与 `cargo-security` 补齐 `patterns: ["*"]` 与 `update-types` | 已在 `dev` 合入（`2d86e88c`） | 修复 Dependabot schema 校验与分组匹配 |
+| PR #16 / Dependabot #26–#29 | `rustls` `0.23.45 → 0.23.46`（`Cargo.lock`） | 已在 `dev` 合入（`dc9e2326`） | 关闭 4 条 `rustls` 运行时告警（1 medium / 3 low） |
+
+### 7.2 独立安全分支待修补项（`security/dependency-advisories-2026-11-25`）
+
+- **Dependabot #21, #23, #31–#37（`undici`，7 high + 2 medium，`development`，`package-lock.json`）**：
+  - 依赖链：`undici@7.29.1`（`cheerio@1.2.0` ← `webdriverio@9.31.9` ← `@wdio/cli@9.31.9`，补丁版本 `7.30.1`）与 `undici@6.28.1`（`webdriver@9.31.9` / `webdriver@9.30.1` ← `@wdio/cli` / `@wdio/tauri-service@1.4.0`，补丁版本 `6.29.1`）。
+  - 仅在开发/E2E 测试工具链中使用，不进入 Desktop / Extension 发布产物；已在 `security/dependency-advisories-2026-11-25` 分支推进小版本/补丁升级与验证。
+
+### 7.3 当前无法使用小补丁处理的告警（保留记录与风险边界）
+
+| 告警 | 包与当前版本 | 等级 / 作用域 | 上游修复边界 | 无法小补丁升级的原因与缓解边界 |
+|---|---|---|---|---|
+| Dependabot #38（`GHSA-5pm8-86m8-9m6r`） | `basic-ftp@5.3.1` | medium / `development` | `6.2.4` | 需跨主版本升级（5.x → 6.x），与 `@wdio/cli@9.31.9 → @wdio/utils@9.31.9 → @puppeteer/browsers@2.13.2 → proxy-agent@6.5.0 → pac-proxy-agent@7.2.0 → get-uri@6.0.5` 约束不兼容；仅 WDIO 开发依赖，不进入发布产物，且本地 E2E 不连接不可信 FTP 服务器。 |
+| Dependabot #4（`GHSA-jmr9-qjv8-65gv`）、#6（`GHSA-7pqw-9j4j-h8q3`） | `extract-zip@2.0.1` | high / `development` | 无（`patched_version: null`） | 上游至今无修复版本（`2.0.1` 即最新）；仅 `@wdio/utils → @puppeteer/browsers@2.13.2` 间接引入，不进入发布产物，且发布/CI WDIO 已强制 `WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0` 并使用预置 `msedgedriver`（延续 RISK-023 接受风险）。 |
+| Dependabot #1（`GHSA-wrw7-89jp-8q8g`） | `glib@0.18.5` | medium / `runtime` | `0.20.0` | 需随 Tauri / GTK-rs 生态跨主版本迁移至 `0.20+`，无法在当前 `Cargo.lock` 中单独小补丁升级；仅 Linux target 经 `gtk` / `webkit2gtk` 引入，Windows 发布产物完全不含 `glib`，且业务代码未调用受影响的 `glib::VariantStrIter`。 |
+
 ## 6. 2026-10-04 跨平台复核与实施结果
 
 本节记录在分支 `cross-platform/automatic-pairing-reconcile-20261002`、基线
