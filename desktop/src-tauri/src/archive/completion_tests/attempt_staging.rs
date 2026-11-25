@@ -51,6 +51,7 @@ fn attempt_staging_resolution_requires_matching_identity_and_isolates_attempts()
             .is_err()
     );
     assert!(!staging.join("job-1").join("attempt-1").exists());
+    drop(context);
     std::fs::remove_dir_all(root).expect("cleanup");
 }
 

@@ -678,8 +678,8 @@
     },
     "desktop/src-tauri/src/archive/completion_tests/attempt_staging.rs": {
       "category": "rust-desktop",
-      "lines": 120,
-      "sha256": "0733b1bc499e066cb1b4a3d2f8c04ae3f1aa801381be78823c8b8b21bca2783d"
+      "lines": 121,
+      "sha256": "db78cce40d8cca7e46a16acf169756e042f7bf860ff0744e77d323d35541c8f2"
     },
     "desktop/src-tauri/src/archive/completion_tests/completion_settings.rs": {
       "category": "rust-desktop",
