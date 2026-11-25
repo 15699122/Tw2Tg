@@ -449,3 +449,12 @@ hosted/release-runner 为 NOT RUN；本轮未修改业务代码。
 与 tauri-driver target attachment，或确认普通 release artifact 的窗口创建与
 导航路径；在 01A 解决并完成 hosted diagnostic 前，不得宣称 Windows UI
 readiness 或 release packaging acceptance。
+
+### 2026-11-25 Windows Platform batch at `b2a41a45` (`f0ff6fea`)
+
+- Branch: `codex/windows-validation-7450451b` (`b2a41a45513b93929dab7b41a80360067eb39fdb`).
+- Fresh builds: Standard Release SHA-256 `463da1ffb11b0275e04e7c7ee55d3c921b6a2744d9d84b35a585bbf404067797`; WDIO dev-channel Release (`--features wdio-e2e`) SHA-256 `0fcdf82aad365b2912705a9e977936d878e78d23e6e62b3746698abc0ebc3f68`; Windows `10.0.29712`, WebView2 `157.0.4341.60` / EdgeDriver `157.0.4341.60`, `200% DPI` (`dpr: 2`), `1080×760`.
+- `npm --prefix desktop test`: **PASS** (`tests 284`, `pass 283`, `fail 0`, `skipped 1`).
+- R1–R7 WebView2 acceptance: **R2–R6 PASS**; **R1** alert strip **PASS** except `marginTop` inside `#downloader-arguments .settings-panel-content` is `0px` (`style.css` L253 overrides L86, `CROSS_PLATFORM_CHANGE_REQUIRED`); **R7** focus ring **PASS**, with Dark-mode `window.scrollTo(0, 100)` (`window.scrollY: 100`) recorded for `CROSS_PLATFORM_REVIEW_REQUIRED`.
+- Opt-in WDIO specs (`focus`, `held-busy`, `moved-focus`): **all PASS 1/1**.
+- 200% DPI visual eye-check: **BLOCKED** (`COMPUTER_USE_UNAVAILABLE`); non-zero metrics, `.dependency-missing`, and CI/Release packaging stay **NOT_RUN**.

@@ -1,36 +1,35 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-24, Cross-platform batch from `b5887417`)
+## Resume summary — authoritative cursor (2026-11-25, Windows batch at `b2a41a45`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**).
 - Branch: **`codex/windows-validation-7450451b`**.
-- Input revision: **`4e427afca0568cb7e4a9216a1655b1ccd9e606e6`** (`4e427afc`, containing cross-platform UI polish **`4c4c4f93`** on top of `28075a45` / `7450451b`; Windows batch `ba86b31` reconciled the preserved local 30 commits `540ce28..8eeb709` into this branch).
-- Cross-platform handoff base: **`b588741726627b07d72c4b71d096c2f8679701e5`** (`b5887417` — Windows validation replay + architecture baseline reseal). The handoff revision for this batch is the documentation commit **after** `b5887417`; confirm it with `git rev-parse codex/windows-validation-7450451b` rather than assuming `b5887417` is the tip.
-- Built Windows Release artifacts at `4e427afc`:
-  - Standard Release `xarchive-desktop.exe`: SHA-256 `ff82a26814638c8fcdd55511c841a8ac1b22d57040d53143abfaceae76892c6a` (**PASS**).
-  - WDIO dev-channel Release `xarchive-desktop.exe` (`--features wdio-e2e`): SHA-256 `78b508cd3fc008085681c8b032fffc5199e1e44cd5634390aee04c7728f9ec84` (**PASS**).
-- Windows validation executed at `4e427afc` (WebView2 `153.0.4234.48` / `msedgedriver.exe` `153.0.4234.46`, `devicePixelRatio: 2` / 200% DPI, `1080×760` viewport, isolated portable root):
-  - Targeted frontend tests (`settings-render`, `ui-state`, `ui-wiring`): **PASS 101/101** (0 fail, 0 skip).
-  - Real WebView2 WDIO UI consistency checks (`target/ui-consistency-4e427afc-20261123181109/runner.log`): **A1–A4 PASS scoped**; **A5 200% DPI / Light & Dark theme / Tab focus / Empty-zero state PASS scoped**; populated `.preview-table` (`target/ui-populated-4e427afc-20261123201736/runner.log`, `rows: 2`, `["通过", "保留"]`, `accepted: true`) **PASS 1/1 (3.5s)** (details in [Windows queue](../validation/windows-queue.md) and [Windows validation history](../validation/windows-validation-history.md)).
-  - W7 `transfer-switch-focus.e2e.mjs` (`WDIO_TRANSFER_SWITCH_GUI=1`, `target/w7-transfer-switch-4e427afc-20261123181751/runner.log`): **PASS 1/1 (1s)** on `4e427afc` (`78b508cd...`).
-  - W6 Offline Bundle assembly, verification & startup (`target/w6-offline-bundle-4e427afc`, `target/w6-bundle-startup-4e427afc-20261123181951/runner.log`): 6-component assembly & `verifyOfflineBundle` **PASS scoped** (`catalogVersion: "2026-11-23-w6"`), WebView2 startup **PASS 1/1 (564ms)** (`database: "ready"`, `executor: "ready"`); embedded catalog still reports `2026-09-20-u9` (`components_active: 0`), so versioned release inputs, activation, and signing remain open.
-  - W6 Real **Microsoft Edge `159.0.4402.13`** pairing migration (`msedgedriver 159.0.4402.13`, `extId: iaajefkoanbkleojofoadeakelihbjne`, `msedgedriver-153.0.4234.46` removed): **PASS** — success path (`legacy` `"synthetic-legacy-token"` → `automatic` via `com.tw2tg.xarchive` Native Host, `websocket.authenticated: true`, `port: 56657`, `token: ""` cleared) and failure path (`Specified native messaging host not found.`, `mode: "legacy"` + `token: "synthetic-legacy-token"` retained in `chrome.storage.local`) both verified on real Edge.
-  - **NOT_RUN** (remains in Manual Validation Queue / next batch): non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog dashed `.dependency-missing`, and visual eye-check at current 200% DPI (`windows-computer-use` `Screenshot` on `Active Desktop: Backend` did not show launched `xarchive-desktop.exe`).
-  - **Routed to Windows CI / Release pipeline**: Offline Bundle versioned release manifest inputs, release-asset activation, and Authenticode code signing.
-  - **Implemented in this handoff revision (`b5887417`, Cross-platform Owner)**: Round-2 UI polish R1–R7 from [the plan §7](../development/desktop-ui-consistency-polish-plan.md#7-follow-up-visual-review-findings--2026-11-24-200-dpi-windows-screenshots) plus the two `held-busy` / `moved-focus` opt-in Desktop WDIO specs. Implementation record: plan §8. Windows WebView2 acceptance for R1–R7 is `NOT_RUN`.
-  - **Linux validation for `b5887417`**: `cargo test --workspace --offline` **PASS**; Desktop Node `npm test` **284 tests / 281 pass / 3 Windows-only skip / 0 fail**; `cargo fmt --all -- --check` **PASS**; `node scripts/check-architecture.mjs` **0 findings** (baseline resealed only for changed shared UI files, no entries added or removed); `node scripts/docs-audit.mjs` **PASS**; `git diff --check` **PASS**.
-  - **Dropped from queue**: 100/125/150% OS DPI physical scaling review (200% DPI WebView2 verified).
-  - Branch reconciliation: **`backup/windows-local-8eeb709` (`8eeb709`, 30 commits `540ce28..8eeb709`) reconciled via Git merge** into `codex/windows-validation-7450451b` (preserving `e9a0c87` partial-refresh retry + `40d0fb6` unvisited-transfer cancellation + `8eeb709` W1/W2/W5/W6 containment/recovery/credentials/tests; `xarchive-download --lib` **PASS 52/52**, `xarchive-workflow --lib` **PASS 24/24**, `xarchive-workflow --test windows_native` **PASS 22/22 (3 volume-8.3 ignored)**, `xarchive-desktop --lib executor::` **PASS 91/91**, `desktop` Node **PASS 276**, `extension` Node **PASS 57**, `check-architecture` **0 findings**). `CROSS_PLATFORM_REVIEW_REQUIRED` for `crates/xarchive-win-job-iocp`, `driver.rs`, `production/transfer.rs`, and `scripts/architecture-baseline.json`.
-- Windows next actions for this handoff (all `NOT_RUN`, see [Windows queue](../validation/windows-queue.md)):
-  - Real WebView2 acceptance of R1–R7 (`.settings-message-error` alert strip, muted read-only textarea with no resize grip, unified disabled buttons, full-width Telegram/diagnose inputs, `EmptyState` on Batches, non-collapsible Storage card, `输出与配置` symmetry and 20px gap, `text-wrap: pretty`) at 200% DPI, light and dark.
-  - Run `transfer-switch-held-busy.e2e.mjs` (`WDIO_TRANSFER_HELD_BUSY_GUI=1`) and `transfer-switch-moved-focus.e2e.mjs` (`WDIO_TRANSFER_MOVED_FOCUS_GUI=1`) against a freshly built `--features wdio-e2e` Release executable, each with its own isolated `XARCHIVE_PORTABLE_ROOT` marker.
-  - Still open from `4e427afc`: non-zero Dashboard/Jobs metrics, `Core Bootstrap` missing-catalog `.dependency-missing`, and the 200% DPI visual eye-check.
-- Stopped proxy session `268c3d0` (PID `66204`): read-only `Get-Process -Id 66204` confirmed **`NOT_PRESENT`**.
+- Validated input revision: **`b2a41a45513b93929dab7b41a80360067eb39fdb`** (`b2a41a45`, containing Round-2 UI polish + two WDIO specs + architecture baseline reseal `f0ff6fea` and docs follow-up `b2a41a45`, over `b5887417` / `4e427afc`).
+- Fresh Windows Release builds at `b2a41a45`:
+  - Standard Release `xarchive-desktop.exe`: **PASS**, SHA-256 `463da1ffb11b0275e04e7c7ee55d3c921b6a2744d9d84b35a585bbf404067797`.
+  - WDIO dev-channel Release `xarchive-desktop.exe` (`--features wdio-e2e`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `0fcdf82aad365b2912705a9e977936d878e78d23e6e62b3746698abc0ebc3f68`.
+  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`validation-artifacts/msedgedriver-157.0.4341.60/msedgedriver.exe`), `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- Executed Windows checks at `b2a41a45`:
+  - `npm --prefix desktop test`: **PASS** (`tests 284`, `suites 17`, `pass 283`, `fail 0`, `skipped 1` POSIX-only skip).
+  - R1–R7 WebView2 acceptance (`0fcdf82a...`, Light + Dark, isolated root `target/ui-round2-root-b2a41a45-20261125121759`, evidence `target/ui-round2-b2a41a45-20261125121759/runner.log`, `1 passing (5.3s)`):
+    - **R2–R6**: **PASS** (muted disabled `textarea` with `resize: none`; unified disabled buttons `opacity: 1`; full-width Telegram credential & proxy diagnose inputs; `BatchesPage` `.empty-jobs > .empty-icon` & static `StoragePage` card; `输出与配置` symmetry, `20px` gap, `text-wrap: pretty`, `aria2` `.path-display`).
+    - **R1 (`.settings-message-error`)**: **PARTIAL / FAIL on `margin-top`** — alert strip styling (`1px`, `rgb(240, 184, 181)`, `7px`, `9px 11px`, `--danger-surface`) **PASS**, but `marginTop` inside `#downloader-arguments .settings-panel-content` resolved to `0px` instead of `12px` in both Light & Dark because `desktop/src/style.css` L253 (`.settings-panel-content .settings-message { margin: 0; }`) overrides L86 (`.settings-panel-content .settings-message-error { margin-top: 12px; }`). **`CROSS_PLATFORM_CHANGE_REQUIRED`**.
+    - **R7 (`--focus-ring` & `html` scroll)**: focus ring (`2px solid rgb(0, 103, 192)` Light / `rgb(120, 186, 255)` Dark) **PASS**; `html` `overflowY: "hidden"` & `.main-panel` `overflowY: "auto"` **PASS**, with **`CROSS_PLATFORM_REVIEW_REQUIRED`** observation that in Dark mode with expanded Settings panels (`docScrollH: 1375`, `clientH: 760`), programmatic `window.scrollTo(0, 100)` still set `window.scrollY` to `100` in WebView2.
+  - Opt-in WDIO specs (`0fcdf82a...`, `WDIO_ADVANCED=1`, isolated portable roots):
+    - `transfer-switch-focus.e2e.mjs` (`WDIO_TRANSFER_SWITCH_GUI=1`): **PASS 1/1** (`target/w7-focus-b2a41a45-20261125121247/runner.log`).
+    - `transfer-switch-held-busy.e2e.mjs` (`WDIO_TRANSFER_HELD_BUSY_GUI=1`): **PASS 1/1** (`target/w7-held-busy-b2a41a45-20261125121254/runner.log`).
+    - `transfer-switch-moved-focus.e2e.mjs` (`WDIO_TRANSFER_MOVED_FOCUS_GUI=1`): **PASS 1/1** (`target/w7-moved-focus-b2a41a45-20261125121657/runner.log`).
+- Remaining Manual Validation Queue (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - 200% DPI visual eye-check: **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — `windows-computer-use` bound to virtual desktop `Backend`, unable to see `Main`).
+  - Non-zero Dashboard/Jobs metrics & `Core Bootstrap` missing-catalog `.dependency-missing`: **NOT_RUN**.
+  - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
+- Cross-platform next actions:
+  - Fix `desktop/src/style.css` R1 cascade (L253 `.settings-panel-content .settings-message` overriding L86 `.settings-message-error` `margin-top: 12px`) and review `window.scrollTo` root scroll behavior on tall Settings pages; hand back for R1 re-verification if needed.
 - `WINDOWS_BLOCKING`: **none**.
 
 ---

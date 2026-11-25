@@ -1,5 +1,29 @@
 # Windows Validation History
 
+## Windows UI Round-2 & W7 opt-in validation at b2a41a45 (f0ff6fea) — 2026-11-25
+
+At input revision `b2a41a45513b93929dab7b41a80360067eb39fdb` (`b2a41a45`, containing Round-2 UI polish + two WDIO specs + architecture baseline reseal `f0ff6fea` and docs follow-up `b2a41a45` over `b5887417`) on `codex/windows-validation-7450451b`:
+
+- **Builds & environment**:
+  - Standard Windows Release `xarchive-desktop.exe`: **PASS**, SHA-256 `463da1ffb11b0275e04e7c7ee55d3c921b6a2744d9d84b35a585bbf404067797`.
+  - WDIO dev-channel Windows Release `xarchive-desktop.exe` (`--features wdio-e2e`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `0fcdf82aad365b2912705a9e977936d878e78d23e6e62b3746698abc0ebc3f68`.
+  - Host: `Microsoft Windows 11 专业工作站版 Insider Preview` (`10.0.29712`, `BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `validation-artifacts/msedgedriver-157.0.4341.60/msedgedriver.exe` (`157.0.4341.60`), `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- **Shared Node tests**:
+  - `npm --prefix desktop test`: **PASS** — `tests 284`, `suites 17`, `pass 283`, `fail 0`, `skipped 1` (POSIX-only skip).
+- **WebView2 Round-2 UI checks** (`0fcdf82a...`, Light + Dark, isolated root `target/ui-round2-root-b2a41a45-20261125121759`, evidence `target/ui-round2-b2a41a45-20261125121759/runner.log`, `1 passing (5.3s)`):
+  - **R1 `.settings-message-error`**: **PARTIAL / FAIL on `margin-top`** — `borderTopWidth: "1px"`, `borderTopColor: "rgb(240, 184, 181)"`, `borderRadius: "7px"`, `padding: "9px 11px"`, `backgroundColor: "rgb(255, 241, 240)"` (Light) / `"rgb(70, 39, 37)"` (Dark) **PASS**, while `marginTop` inside `#downloader-arguments .settings-panel-content` resolved to `"0px"` instead of `"12px"` in both themes because `desktop/src/style.css` L253 overrides L86 (`CROSS_PLATFORM_CHANGE_REQUIRED`).
+  - **R2 `textarea`**: **PASS** (`#record-import-records` & `#gallery-dl-arguments` `resize: "none"`; disabled `#gallery-dl-arguments` `--surface-muted` & `--foreground-muted`).
+  - **R3 Disabled buttons**: **PASS** (7 disabled buttons on Settings — `default` + `outline` — `opacity: "1"`, muted text, `--border`, `--surface-muted` in Light + Dark).
+  - **R4 Input widths**: **PASS** (Telegram credential & proxy diagnose URL `maxWidth: "none"`, `widthMatch: true` in Light + Dark).
+  - **R5 Empty states**: **PASS** (`BatchesPage` `.empty-jobs > .empty-icon` `aria-hidden="true"`, `StoragePage` `settings-panel-static` without toggle/chevron in Light + Dark).
+  - **R6 Layout**: **PASS** (`输出与配置` `["17px", "650"]`, `.settings-fields + .batch-form-options` `marginTop: "20px"`, `.dashboard-detail` `textWrap: "pretty"`, `aria2` `.path-display` in Light + Dark).
+  - **R7 Focus ring & scroll**: focus ring (`2px solid rgb(0, 103, 192)` Light / `rgb(120, 186, 255)` Dark) **PASS**; `htmlOverflowY: "hidden"` & `mainOverflowY: "auto"` **PASS**; Dark mode (`docScrollVsClient: [1375, 760]`) allowed `window.scrollTo(0, 100)` -> `window.scrollY: 100` (`CROSS_PLATFORM_REVIEW_REQUIRED`).
+- **W7 Opt-in WDIO specs** (`0fcdf82a...`, `WDIO_ADVANCED=1`, isolated portable roots):
+  - `transfer-switch-focus.e2e.mjs` (`WDIO_TRANSFER_SWITCH_GUI=1`): **PASS 1/1** (`target/w7-focus-b2a41a45-20261125121247/runner.log`).
+  - `transfer-switch-held-busy.e2e.mjs` (`WDIO_TRANSFER_HELD_BUSY_GUI=1`): **PASS 1/1** (`target/w7-held-busy-b2a41a45-20261125121254/runner.log`).
+  - `transfer-switch-moved-focus.e2e.mjs` (`WDIO_TRANSFER_MOVED_FOCUS_GUI=1`): **PASS 1/1** (`target/w7-moved-focus-b2a41a45-20261125121657/runner.log`).
+- **Manual Validation Queue**: 200% DPI visual eye-check **BLOCKED** (`COMPUTER_USE_UNAVAILABLE`, `windows-computer-use` bound to `Backend` desktop); non-zero Dashboard/Jobs metrics & `Core Bootstrap` `.dependency-missing` **NOT_RUN**.
+
 ## Windows UI consistency validation at 4e427afc (4c4c4f93) — 2026-11-23
 
 At input revision `4e427afca0568cb7e4a9216a1655b1ccd9e606e6` (`4e427afc`, containing cross-platform UI polish `4c4c4f93`) on `codex/windows-validation-7450451b`:
