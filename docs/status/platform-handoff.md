@@ -1,27 +1,26 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-25, R1 cascade fix & R7 review)
+## Resume summary — authoritative cursor (2026-11-25, Windows R1 re-verification at `4f45874f`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**).
+- Owner: Windows Platform Owner (**`WINDOWS_BATCH_CLOSED`** — R1 passed; remaining items stay in [Windows queue](../validation/windows-queue.md) with no open `CROSS_PLATFORM_CHANGE_REQUIRED`).
 - Branch: **`codex/windows-validation-7450451b`**.
-- Input revision: **`b537b43a4393cca1be1a117a2eda83c10159c7d2`** (`b537b43a`, Windows `b2a41a45` validation write-back).
-- Cross-platform work completed (this batch):
-  1. **R1 `.settings-message-error` `margin-top` fix (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: moved `.settings-panel-content .settings-message-error, .ui-card-content .settings-message-error, .download-job-entry > .settings-message-error { margin-top: 12px; }` in [`desktop/src/style.css`](../../desktop/src/style.css) after `.settings-panel-content .settings-message { margin: 0; }` (and `.download-job-entry > .settings-message { margin: 0; ... }`), preserving all alert-strip border/radius/background/padding rules. Added source-order cascade assertions in [`desktop/test/ui-wiring.test.mjs`](../../desktop/test/ui-wiring.test.mjs).
-  2. **R7 `window.scrollTo` review (`CROSS_PLATFORM_REVIEW_REQUIRED`)**: evaluated and confirmed **keep as-is** (`html { overflow: hidden; }`). In Chromium/WebView2, `overflow: hidden` hides user scrollbars and blocks wheel/touch/keyboard scrolling of the root document while still allowing programmatic `window.scrollTo`; `.app-shell` (`height: 100vh; overflow: hidden`) and `.main-panel` (`overflow: auto`) already isolate interactive/focus scrolling inside `.main-panel`, so no additional root-scroll constraint is needed.
-- Linux validation gates executed after final code edit:
-  - `cargo test --workspace --offline`: **PASS**
-  - `npm --prefix desktop test`: **PASS** (`tests 284`, `suites 17`, `pass 281`, `fail 0`, `skipped 3` Windows-only skips)
-  - `npm --prefix desktop run build`: **PASS** (Vite production build, `1.83s`)
-  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 44 js/ts, 28 relative edges, 0 findings`)
-  - `node scripts/docs-audit.mjs`: **PASS**
-  - `git diff --check`: **PASS**
-- Windows work required:
-  - Re-verify **R1** (`marginTop: 12px` on `.settings-message-error` inside `#downloader-arguments .settings-panel-content` in Light + Dark) on a fresh build from this handoff commit. R2–R6, R7 focus ring, and the three opt-in W7 WDIO specs (`transfer-switch-focus`, `transfer-switch-held-busy`, `transfer-switch-moved-focus`) already passed at `b2a41a45`.
+- Validated input revision: **`4f45874fe4a63d08df1d58d9fbdcf9c364228325`** (`4f45874f`, R1 cascade fix & R7 `window.scrollTo` review on top of `b537b43a`).
+- Fresh Windows Release build at `4f45874f`:
+  - WDIO dev-channel Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `38208f347c05c69b2a31a69cd7f4f383f5ca36919e7cc383464aa64a41141b71`.
+  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- Executed Windows re-verification at `4f45874f`:
+  - **R1 (`.settings-message-error`)** (`38208f34...`, Light + Dark, isolated root `target/ui-r1-root-4f45874f-20261125131321`, evidence `target/ui-r1-4f45874f-20261125131321/runner.log`, `1 passing (3s)`): **PASS** — inside `#downloader-arguments .settings-panel-content`, `marginTop` is now **`12px`** in both Light and Dark; `borderTopWidth: "1px"`, `borderTopColor: "rgb(240, 184, 181)"`, `borderRadius: "7px"`, `padding: "9px 11px"`, and `backgroundColor` (`rgb(255, 241, 240)` Light / `rgb(70, 39, 37)` Dark) all pass.
+  - **R2–R6, R7 focus ring, and W7 opt-in WDIO specs** (`transfer-switch-focus`, `transfer-switch-held-busy`, `transfer-switch-moved-focus`): unchanged **PASS** from `b2a41a45` (`0fcdf82a...`).
+  - **R7 `window.scrollTo` observation**: closed per Cross-platform Owner review (keep `html { overflow: hidden; }` as-is).
+- Remaining Manual Validation Queue (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - 200% DPI visual eye-check: **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — `windows-computer-use` bound to virtual desktop `Backend`, unable to see `Main`).
+  - Non-zero Dashboard/Jobs metrics & `Core Bootstrap` missing-catalog `.dependency-missing`: **NOT_RUN**.
+  - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
 - `WINDOWS_BLOCKING`: **none**.
 
 ---

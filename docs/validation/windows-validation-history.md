@@ -1,5 +1,15 @@
 # Windows Validation History
 
+## Windows R1 re-verification at 4f45874f — 2026-11-25
+
+At input revision `4f45874fe4a63d08df1d58d9fbdcf9c364228325` (`4f45874f`, R1 cascade fix & R7 `window.scrollTo` review on top of `b537b43a`) on `codex/windows-validation-7450451b`:
+
+- **Build & environment**:
+  - WDIO dev-channel Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `38208f347c05c69b2a31a69cd7f4f383f5ca36919e7cc383464aa64a41141b71`.
+  - Host: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- **WebView2 R1 re-verification** (`38208f34...`, Light + Dark, isolated root `target/ui-r1-root-4f45874f-20261125131321`, evidence `target/ui-r1-4f45874f-20261125131321/runner.log`, `1 passing (3s)`):
+  - **R1 `.settings-message-error`**: **PASS** — inside `#downloader-arguments .settings-panel-content`, `marginTop` resolved to `"12px"` in both Light and Dark; `borderTopWidth: "1px"`, `borderTopColor: "rgb(240, 184, 181)"`, `borderRadius: "7px"`, `padding: "9px 11px"`, and `backgroundColor` (`"rgb(255, 241, 240)"` Light / `"rgb(70, 39, 37)"` Dark) all verified.
+
 ## Windows UI Round-2 & W7 opt-in validation at b2a41a45 (f0ff6fea) — 2026-11-25
 
 At input revision `b2a41a45513b93929dab7b41a80360067eb39fdb` (`b2a41a45`, containing Round-2 UI polish + two WDIO specs + architecture baseline reseal `f0ff6fea` and docs follow-up `b2a41a45` over `b5887417`) on `codex/windows-validation-7450451b`:
