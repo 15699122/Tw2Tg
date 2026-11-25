@@ -1,5 +1,7 @@
 //! Integration checks for binding recovery to an already-persisted attempt.
 
+#![cfg(unix)]
+
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
