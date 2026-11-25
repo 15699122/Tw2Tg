@@ -915,6 +915,7 @@ test("proxy disclosure and URL fields share the stroke-icon and mono conventions
   assert.match(settingsSource, /id="proxy-value" className="mono-input"/);
   assert.match(settingsSource, /id="proxy-diagnose-url" className="mono-input"/);
   assert.match(settingsSource, /<details className="proxy-system-details">/);
+});
 
 // --- 2026-11-24 Round-2 visual polish (200% DPI screenshots) ---------------
 
@@ -1008,6 +1009,4 @@ test("micro-polish: toggle-to-help gap, error-to-button gap, aria2c code and pat
   assert.match(styleSource, /\.aria2-status-row code \{/);
   assert.match(configSource, /<code>aria2c<\/code>/);
   assert.match(configSource, /renderAria2StatusText\(installation\)/);
-});
-
 });

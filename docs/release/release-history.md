@@ -21,6 +21,7 @@ Confirmed on GitHub for `15699122/Tw2Tg`. No release is currently pending public
 
 | Version | Published (UTC) | Type | Source | Notes | Acceptance summary |
 |---|---|---|---|---|---|
+| `v0.2.1-pre2` | 2026-11-25 (pending CI) | pre-release | `dev` | [`notes/v0.2.1-pre2.md`](notes/v0.2.1-pre2.md) | Version 0.2.1 pre-release 2; Linux gates & Windows release workflow pending CI completion. |
 | `v0.2.1-pre1` | 2026-10-01 | pre-release | `3115c3b` | [`notes/v0.2.1-pre1.md`](notes/v0.2.1-pre1.md) | Version 0.2.1. 7 assets verified, manifest `source_sha` = tag target; Windows build `success`; independent WDIO `FAIL` (environment class, non-blocking, reproduces on the `v0.2.0` run). GUI acceptance `WINDOWS_BLOCKED` / `NOT_RUN`. Restricted pre-release under explicit Owner authorization with reduced scope; **not** a release approval. |
 | `v0.2.0` | 2026-09-30 | release | `7910033` | [`notes/v0.2.0.md`](notes/v0.2.0.md) | Assets verified; GUI acceptance `WINDOWS_BLOCKED`; independent WDIO FAIL (environment class, non-blocking). Published under an explicit Owner authorization with a reduced scope. |
 | `v0.2.0-pre7` | 2026-09-30 | pre-release | `1c72c2d` | [`notes/v0.2.0-pre7.md`](notes/v0.2.0-pre7.md) | Renumbered republish of `v0.2.0-pre.16`; 7 assets. Migration republish, not a new acceptance. |
