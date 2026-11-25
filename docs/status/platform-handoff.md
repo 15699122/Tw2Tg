@@ -1,9 +1,35 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-25, Windows manual 200% DPI review at `4f45874f`)
+## Resume summary — authoritative cursor (2026-11-25, M1–M3 micro-polish & M4 review)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**).
+- Branch: **`codex/windows-validation-7450451b`**.
+- Input revision: **`7cc91be95c34d90cf47b33df02b44cfb43fd7a65`** (`7cc91be9`, Windows manual 200% DPI review at `4f45874f`).
+- Cross-platform work completed (this batch):
+  1. **M1 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: added `.batch-form-options + .settings-help { margin-top: 12px; }` in [`desktop/src/style.css`](../../desktop/src/style.css) so the toggle row in `归档输出设置` has `12px` clearance above the description paragraph.
+  2. **M2 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: added `.settings-panel-content .settings-message-error + .ui-button, .settings-panel-content .settings-message-error + .button-row { margin-top: 14px; }` in [`desktop/src/style.css`](../../desktop/src/style.css) so `.settings-message-error` keeps `14px` breathing room above the action button/row (without adding trailing bottom space when the error strip is last).
+  3. **M3 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: wrapped `aria2c` in `<code>aria2c</code>` for both the `aria2` status row (`renderAria2StatusText` in [`desktop/src/pages/download-config-page.jsx`](../../desktop/src/pages/download-config-page.jsx), keeping `aria2StatusText` string contract in [`desktop/src/lib/ui-state.js`](../../desktop/src/lib/ui-state.js) intact) and the bottom SHA-256 note, styled `.aria2-status-row code` alongside `.aria2-help code`, and updated `.path-display` in [`desktop/src/style.css`](../../desktop/src/style.css) to match `.copyable-path` (`1px solid var(--border)`, `7px` radius, `8px 10px` padding, `var(--surface-subtle)` background, `min-height: 46px`).
+  4. **M4 (`CROSS_PLATFORM_REVIEW_REQUIRED`, optional)**: evaluated and confirmed **keep as-is** — the `归档输出设置` / `配置交换` paragraphs carry tested contractual disclosures (D1 recovery manifest & F2 exchange drain/restart semantics), and `.settings-field textarea { resize: none; }` intentionally suppresses WebView2's diagonal resize grip on both disabled and editable textareas inside 7px-radius cards.
+  5. **Tests & architecture baseline**: added M1–M3 source-contract assertions in [`desktop/test/ui-wiring.test.mjs`](../../desktop/test/ui-wiring.test.mjs) and resealed [`scripts/architecture-baseline.json`](../../scripts/architecture-baseline.json) for `download-config-page.jsx` (`80 -> 85` lines).
+- Linux validation gates executed after final code edit:
+  - `cargo test --workspace --offline`: **PASS**
+  - `npm --prefix desktop test`: **PASS** (`tests 285`, `suites 17`, `pass 282`, `fail 0`, `skipped 3` Windows-only skips)
+  - `npm --prefix desktop run build`: **PASS** (Vite production build, `933ms`)
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 44 js/ts, 28 relative edges, 0 findings`)
+  - `node scripts/docs-audit.mjs`: **PASS**
+  - `git diff --check`: **PASS**
+- Windows work required:
+  - Re-verify **M1–M3** on a fresh build from this handoff commit (`.batch-form-options + .settings-help` `12px`, `.settings-message-error` to `保存下载器参数` `14px`, `aria2c` monospace `<code>` pills and bordered `.path-display` slot). Automated R1–R7, non-zero Dashboard/Jobs metrics, and W7 opt-in specs already passed on `4f45874f` / `b2a41a45`.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-25, Windows manual 200% DPI review at `4f45874f`
 
 ### Cursor
 

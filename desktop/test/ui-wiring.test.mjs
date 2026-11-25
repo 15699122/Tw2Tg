@@ -999,4 +999,15 @@ test("long detail text avoids a one-character orphan line", () => {
   assert.match(styleSource, /\.dashboard-detail \{[^}]*text-wrap: pretty/);
 });
 
+test("micro-polish: toggle-to-help gap, error-to-button gap, aria2c code and path slot framing", () => {
+  assert.match(styleSource, /\.batch-form-options \+ \.settings-help \{ margin-top: 12px; \}/);
+  assert.match(styleSource, /\.settings-panel-content \.settings-message-error \+ \.ui-button, \.settings-panel-content \.settings-message-error \+ \.button-row \{ margin-top: 14px; \}/);
+  const pathDisplay = styleSource.match(/\.path-display \{[^}]*\}/)?.[0] ?? "";
+  assert.match(pathDisplay, /border: 1px solid var\(--border\)/);
+  assert.match(pathDisplay, /background: var\(--surface-subtle\)/);
+  assert.match(styleSource, /\.aria2-status-row code \{/);
+  assert.match(configSource, /<code>aria2c<\/code>/);
+  assert.match(configSource, /renderAria2StatusText\(installation\)/);
+});
+
 });

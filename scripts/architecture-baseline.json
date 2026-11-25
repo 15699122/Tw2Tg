@@ -1273,8 +1273,8 @@
     },
     "desktop/src/pages/download-config-page.jsx": {
       "category": "frontend-source",
-      "lines": 80,
-      "sha256": "1d34a3c1b0c7df05244dd31afd414d865a6281cb0453d95e5fa7d90a21b2ee61"
+      "lines": 85,
+      "sha256": "b29eedab08b415dba30abce68423a174a5ec46936d103420ac1c1078714fc2d6"
     },
     "desktop/src/pages/download-jobs-page.jsx": {
       "category": "frontend-source",
