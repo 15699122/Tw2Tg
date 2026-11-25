@@ -15,11 +15,12 @@
   - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
 - Executed Windows re-verification at `4f45874f`:
   - **R1 (`.settings-message-error`)** (`38208f34...`, Light + Dark, isolated root `target/ui-r1-root-4f45874f-20261125131321`, evidence `target/ui-r1-4f45874f-20261125131321/runner.log`, `1 passing (3s)`): **PASS** — inside `#downloader-arguments .settings-panel-content`, `marginTop` is now **`12px`** in both Light and Dark; `borderTopWidth: "1px"`, `borderTopColor: "rgb(240, 184, 181)"`, `borderRadius: "7px"`, `padding: "9px 11px"`, and `backgroundColor` (`rgb(255, 241, 240)` Light / `rgb(70, 39, 37)` Dark) all pass.
+  - **Non-zero Dashboard / Jobs metrics** (`38208f34...`, Light + Dark, isolated root `target/ui-nonzero-root-4f45874f-20261125142947`, evidence `target/ui-nonzero-4f45874f-20261125142947/runner.log`, `1 passing (2.7s)`): **PASS** — seeded `COMPLETE` + `FAILED` + `QUEUED` jobs in isolated `archive.sqlite3`; Dashboard rendered `全部任务 3` (`metric-default`), `进行中 1` (`metric-default`), `已完成 1` (`metric-green`), `失败 1` (`metric-red`), `recentRows: 3`, and `任务记录` rendered `rowCount: 3`, `emptyCount: 0`, `paginationHidden: true` in both Light & Dark.
   - **R2–R6, R7 focus ring, and W7 opt-in WDIO specs** (`transfer-switch-focus`, `transfer-switch-held-busy`, `transfer-switch-moved-focus`): unchanged **PASS** from `b2a41a45` (`0fcdf82a...`).
   - **R7 `window.scrollTo` observation**: closed per Cross-platform Owner review (keep `html { overflow: hidden; }` as-is).
 - Remaining Manual Validation Queue (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  - 200% DPI visual eye-check: **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — `windows-computer-use` bound to virtual desktop `Backend`, unable to see `Main`).
-  - Non-zero Dashboard/Jobs metrics & `Core Bootstrap` missing-catalog `.dependency-missing`: **NOT_RUN**.
+  - 200% DPI visual eye-check: **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — retried `Screenshot` + `App` `launch_executable` PID `45552` + `Screenshot`; `windows-computer-use` remained on `Active Desktop: Backend` with `No active window found` / `No windows found`; PID `45552` stopped).
+  - `Core Bootstrap` missing-catalog `.dependency-missing`: **NOT_RUN** (embedded catalog `2026-09-20-u9` has `components_required: 0` in `components.rs`, so `ready` stays `true` until populated release assets ship).
   - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
 - `WINDOWS_BLOCKING`: **none**.
 

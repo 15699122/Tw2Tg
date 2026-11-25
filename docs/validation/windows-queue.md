@@ -21,9 +21,11 @@ Round-2 UI polish & opt-in WDIO specs:
   - `transfer-switch-held-busy.e2e.mjs` (`WDIO_TRANSFER_HELD_BUSY_GUI=1`): **PASS 1/1** (`target/w7-held-busy-b2a41a45-20261125121254/runner.log`).
   - `transfer-switch-moved-focus.e2e.mjs` (`WDIO_TRANSFER_MOVED_FOCUS_GUI=1`): **PASS 1/1** (`target/w7-moved-focus-b2a41a45-20261125121657/runner.log`).
 
+- **Non-zero Dashboard / Jobs metrics** (`4f45874f`, WDIO Release `38208f34...`, Light + Dark, `target/ui-nonzero-4f45874f-20261125142947/runner.log`): **PASS** (`1 passing (2.7s)`) — seeded `COMPLETE` + `FAILED` + `QUEUED` jobs in isolated `archive.sqlite3`; Dashboard rendered `全部任务 3` (`metric-default`), `进行中 1` (`metric-default`), `已完成 1` (`metric-green`), `失败 1` (`metric-red`), `recentRows: 3`, and `任务记录` rendered `rowCount: 3`, `emptyCount: 0`, `paginationHidden: true` in Light + Dark.
+
 Manual Validation Queue (remaining open Windows items):
 
-- W7 / UI consistency: 200% DPI visual eye-check **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — `windows-computer-use` bound to virtual desktop `Backend`); non-zero Dashboard/Jobs metrics & `Core Bootstrap` missing-catalog `.dependency-missing` **NOT_RUN**.
+- W7 / UI consistency: 200% DPI visual eye-check **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — retried `Screenshot` + `App` `launch_executable` PID `45552` + `Screenshot`; `windows-computer-use` on `Backend` desktop still reported `No active window found`; PID `45552` stopped); `Core Bootstrap` missing-catalog `.dependency-missing` **NOT_RUN** (`components.rs` embedded catalog `2026-09-20-u9` has `components_required: 0` until populated release assets ship).
 - Windows CI / Release pipeline: versioned release manifest inputs, release-asset activation, and Authenticode signing (**NOT_RUN**).
 
 Reconciled W1–W6 history from `backup/windows-local-8eeb709` (`8eeb709`):
