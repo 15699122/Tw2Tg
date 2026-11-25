@@ -129,4 +129,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          gh workflow run windows-release.yml --ref "$RELEASE_TAG" -f release_tag="$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          gh workflow run windows-release.yml --ref "$RELEASE_TAG" -f release_tag="$RELEASE_TAG" -f upload=true --repo "$GITHUB_REPOSITORY"
