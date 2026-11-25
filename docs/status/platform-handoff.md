@@ -1,27 +1,28 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-25, Windows R1 re-verification at `4f45874f`)
+## Resume summary — authoritative cursor (2026-11-25, Windows manual 200% DPI review at `4f45874f`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Windows Platform Owner (**`WINDOWS_BATCH_CLOSED`** — R1 passed; remaining items stay in [Windows queue](../validation/windows-queue.md) with no open `CROSS_PLATFORM_CHANGE_REQUIRED`).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**).
 - Branch: **`codex/windows-validation-7450451b`**.
-- Validated input revision: **`4f45874fe4a63d08df1d58d9fbdcf9c364228325`** (`4f45874f`, R1 cascade fix & R7 `window.scrollTo` review on top of `b537b43a`).
-- Fresh Windows Release build at `4f45874f`:
-  - WDIO dev-channel Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `38208f347c05c69b2a31a69cd7f4f383f5ca36919e7cc383464aa64a41141b71`.
-  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
-- Executed Windows re-verification at `4f45874f`:
-  - **R1 (`.settings-message-error`)** (`38208f34...`, Light + Dark, isolated root `target/ui-r1-root-4f45874f-20261125131321`, evidence `target/ui-r1-4f45874f-20261125131321/runner.log`, `1 passing (3s)`): **PASS** — inside `#downloader-arguments .settings-panel-content`, `marginTop` is now **`12px`** in both Light and Dark; `borderTopWidth: "1px"`, `borderTopColor: "rgb(240, 184, 181)"`, `borderRadius: "7px"`, `padding: "9px 11px"`, and `backgroundColor` (`rgb(255, 241, 240)` Light / `rgb(70, 39, 37)` Dark) all pass.
-  - **Non-zero Dashboard / Jobs metrics** (`38208f34...`, Light + Dark, isolated root `target/ui-nonzero-root-4f45874f-20261125142947`, evidence `target/ui-nonzero-4f45874f-20261125142947/runner.log`, `1 passing (2.7s)`): **PASS** — seeded `COMPLETE` + `FAILED` + `QUEUED` jobs in isolated `archive.sqlite3`; Dashboard rendered `全部任务 3` (`metric-default`), `进行中 1` (`metric-default`), `已完成 1` (`metric-green`), `失败 1` (`metric-red`), `recentRows: 3`, and `任务记录` rendered `rowCount: 3`, `emptyCount: 0`, `paginationHidden: true` in both Light & Dark.
-  - **R2–R6, R7 focus ring, and W7 opt-in WDIO specs** (`transfer-switch-focus`, `transfer-switch-held-busy`, `transfer-switch-moved-focus`): unchanged **PASS** from `b2a41a45` (`0fcdf82a...`).
-  - **R7 `window.scrollTo` observation**: closed per Cross-platform Owner review (keep `html { overflow: hidden; }` as-is).
-- Remaining Manual Validation Queue (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  - 200% DPI visual eye-check: **BLOCKED** (`COMPUTER_USE_UNAVAILABLE` — retried `Screenshot` + `App` `launch_executable` PID `45552` + `Screenshot`; `windows-computer-use` remained on `Active Desktop: Backend` with `No active window found` / `No windows found`; PID `45552` stopped).
-  - `Core Bootstrap` missing-catalog `.dependency-missing`: **NOT_RUN** (embedded catalog `2026-09-20-u9` has `components_required: 0` in `components.rs`, so `ready` stays `true` until populated release assets ship).
-  - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
+- Validated input revision: **`4f45874fe4a63d08df1d58d9fbdcf9c364228325`** (`4f45874f`, docs updated through `145bc5e`).
+- WDIO dev-channel Release build at `4f45874f`: `xarchive-desktop.exe`, SHA-256 `38208f347c05c69b2a31a69cd7f4f383f5ca36919e7cc383464aa64a41141b71`.
+- **Manual 200% DPI visual review completed (2026-11-25, 6 user screenshots of `38208f34...`)**:
+  - **Confirmed PASS**: Dashboard empty state (`1px` dashed border) and shortened detail copy; Download Config `输出与配置` symmetry, `#2e6f59` active toggles, muted `#f4f4f4` read-only `gallery-dl` textarea with no resize grip, `--danger` alert strip container, `aria2` effective path display, and `1px` bordered disabled buttons (matching R3 WebView2 verification across Settings Extension & Download Config).
+  - **Shared UI micro-polish findings (`CROSS_PLATFORM_CHANGE_REQUIRED` / `CROSS_PLATFORM_REVIEW_REQUIRED`)**:
+    1. **M1 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: Download Config `归档输出设置` toggle row (`.batch-form-options`, [`download-config-page.jsx`](../../desktop/src/pages/download-config-page.jsx)) to the description paragraph below has only ~2–4px gap; increase to `10–12px`.
+    2. **M2 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: Download Config `下载器参数` `.settings-message-error` ([`style.css`](../../desktop/src/style.css)) bottom to `保存下载器参数` button is ~6–8px; increase bottom spacing before `.button-row` to `12–16px`.
+    3. **M3 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: `aria2` panel `aria2c` mentions ([`ui-state.js`](../../desktop/src/lib/ui-state.js), [`download-config-page.jsx`](../../desktop/src/pages/download-config-page.jsx)) lack monospace `<code>` styling, and the unset `当前生效的 aria2 可执行文件` path slot should use a `1px` bordered muted path container consistent with Storage/Settings.
+    4. **M4 (`CROSS_PLATFORM_REVIEW_REQUIRED`, optional)**: long dense prose paragraphs in `归档输出设置` / `配置交换`, and editable `<textarea>` diagonal resize grip.
+- **Automated WebView2 checks already PASS on `4f45874f` / `b2a41a45`**:
+  - R1 (`4f45874f`, `38208f34...`): **PASS** (`target/ui-r1-4f45874f-20261125131321/runner.log`).
+  - Non-zero Dashboard / Jobs metrics (`4f45874f`, `38208f34...`): **PASS** (`target/ui-nonzero-4f45874f-20261125142947/runner.log`).
+  - R2–R6, R7 focus ring, `npm --prefix desktop test` (284 tests), and W7 opt-in WDIO specs (`focus`, `held-busy`, `moved-focus`): **PASS** at `b2a41a45` (`0fcdf82a...`).
+- Remaining non-blocking queue items: `Core Bootstrap` missing-catalog `.dependency-missing` (**NOT_RUN**, embedded catalog `2026-09-20-u9` has `components_required: 0`), Windows CI / Release pipeline (**NOT_RUN**).
 - `WINDOWS_BLOCKING`: **none**.
 
 ---
