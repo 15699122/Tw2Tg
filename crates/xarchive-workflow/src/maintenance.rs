@@ -87,6 +87,8 @@ impl WorkspaceGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    static MAINTENANCE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn process_owner() {
         let Some(directory) = std::env::var_os("TW2TG_MAINTENANCE_TEST_DIRECTORY") else {
@@ -102,6 +104,9 @@ mod tests {
 
     #[test]
     fn killed_process_releases_maintenance() {
+        let _test_guard = MAINTENANCE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let directory =
             std::env::temp_dir().join(format!("tw2tg-maintenance-process-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
@@ -132,8 +137,11 @@ mod tests {
     }
     #[test]
     fn shared_readers_drain_and_cancel_release_admission() {
+        let _test_guard = MAINTENANCE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let directory =
-            std::env::temp_dir().join(format!("tw2tg-maintenance-{}", std::process::id()));
+            std::env::temp_dir().join(format!("tw2tg-maintenance-shared-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let first = WorkspaceGuard::try_enter(&directory).unwrap();
         let second = WorkspaceGuard::try_enter(&directory).unwrap();
