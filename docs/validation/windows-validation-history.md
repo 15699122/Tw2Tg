@@ -1,5 +1,18 @@
 # Windows Validation History
 
+## Windows M1–M3 UI micro-polish verification at a5a2dd0d — 2026-11-25
+
+At input revision `a5a2dd0d63d80c15e1c98c96fe9f09d5ec65aea9` (`a5a2dd0d`, M1–M3 micro-polish & M4 review on top of `7cc91be9`) on `codex/windows-validation-7450451b`:
+
+- **Build & environment**:
+  - WDIO dev-channel Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `a5cf2dad0f5125a57e028c5834bc721515c41c13da8647e328a51b1449996406`.
+  - Host: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- **WebView2 M1–M3 re-verification** (`a5cf2dad...`, Light + Dark, isolated root `target/ui-m1-m3-root-a5a2dd0d-20261125161154`, evidence `target/ui-m1-m3-a5a2dd0d-20261125161154/runner.log`, `1 passing (2.9s)`):
+  - **M1 (`归档输出设置`)**: **PASS** — `#output-settings .batch-form-options + .settings-help` `marginTop: "12px"` in Light & Dark.
+  - **M2 (`下载器参数`)**: **PASS** — `#downloader-arguments .settings-panel-content .settings-message-error + .ui-button` `marginTop: "14px"` (`rectGapPx: 14`) in Light & Dark.
+  - **M3 (`aria2` 面板)**: **PASS** — `.aria2-status-row code` & `.aria2-section-note code` render `"aria2c"` in `"Cascadia Mono", "Segoe UI Mono", Consolas, monospace`; unset `.aria2-path-controls .path-display` renders `1px solid`, `7px` radius, `8px 10px` padding, `minHeight: "46px"`, and `--surface-subtle` (`"rgb(250, 250, 250)"` Light / `"rgb(32, 35, 40)"` Dark).
+- **M4 (`归档输出设置 / 配置交换` 长段文本 & `<textarea>` `resize: none`)**: closed as-is per Cross-platform Owner review.
+
 ## Windows R1 re-verification at 4f45874f — 2026-11-25
 
 At input revision `4f45874fe4a63d08df1d58d9fbdcf9c364228325` (`4f45874f`, R1 cascade fix & R7 `window.scrollTo` review on top of `b537b43a`) on `codex/windows-validation-7450451b`:

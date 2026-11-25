@@ -23,9 +23,11 @@ Round-2 UI polish & opt-in WDIO specs:
 
 - **Non-zero Dashboard / Jobs metrics** (`4f45874f`, WDIO Release `38208f34...`, Light + Dark, `target/ui-nonzero-4f45874f-20261125142947/runner.log`): **PASS** (`1 passing (2.7s)`) — seeded `COMPLETE` + `FAILED` + `QUEUED` jobs in isolated `archive.sqlite3`; Dashboard rendered `全部任务 3` (`metric-default`), `进行中 1` (`metric-default`), `已完成 1` (`metric-green`), `失败 1` (`metric-red`), `recentRows: 3`, and `任务记录` rendered `rowCount: 3`, `emptyCount: 0`, `paginationHidden: true` in Light + Dark.
 
+- **M1–M3 micro-polish** (`a5a2dd0d`, WDIO Release `a5cf2dad...`, Light + Dark, `target/ui-m1-m3-a5a2dd0d-20261125161154/runner.log`): **PASS** (`1 passing (2.9s)`) — **M1** `#output-settings .batch-form-options + .settings-help` `marginTop: 12px`; **M2** `#downloader-arguments .settings-panel-content .settings-message-error + .ui-button` `marginTop: 14px` (gap `14px`); **M3** `aria2c` monospace `<code>` pills and unset `.path-display` (`1px solid`, `7px`, `8px 10px`, `--surface-subtle` `rgb(250, 250, 250)` / `rgb(32, 35, 40)`). **M4** closed as-is per Cross-platform Owner review.
+
 Manual Validation Queue (remaining open Windows items):
 
-- W7 / UI consistency: manual 200% DPI visual eye-check **PASS scoped** on `4f45874f` (`38208f34...`, 6 user screenshots), surfacing shared micro-polish items M1–M3 (`CROSS_PLATFORM_CHANGE_REQUIRED`: toggle-to-prose spacing in `归档输出设置`, `.settings-message-error` bottom spacing before `.button-row`, `aria2c` monospace + bordered unset `aria2` path slot) and optional M4 (`CROSS_PLATFORM_REVIEW_REQUIRED`); `Core Bootstrap` missing-catalog `.dependency-missing` **NOT_RUN** (`components.rs` embedded catalog `2026-09-20-u9` has `components_required: 0` until populated release assets ship).
+- W7 / UI consistency: manual 200% DPI visual eye-check **PASS scoped** (`4f45874f`, `38208f34...`) + M1–M3 follow-ups **PASS** (`a5a2dd0d`, `a5cf2dad...`); `Core Bootstrap` missing-catalog `.dependency-missing` **NOT_RUN** (`components.rs` embedded catalog `2026-09-20-u9` has `components_required: 0` until populated release assets ship).
 - Windows CI / Release pipeline: versioned release manifest inputs, release-asset activation, and Authenticode signing (**NOT_RUN**).
 
 Reconciled W1–W6 history from `backup/windows-local-8eeb709` (`8eeb709`):

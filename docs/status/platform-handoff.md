@@ -1,30 +1,27 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-25, M1–M3 micro-polish & M4 review)
+## Resume summary — authoritative cursor (2026-11-25, Windows M1–M3 verification at `a5a2dd0d`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**).
+- Owner: Windows Platform Owner (**`WINDOWS_BATCH_CLOSED`** — M1–M3 passed; M4 closed as-is per Cross-platform Owner review; no open `CROSS_PLATFORM_CHANGE_REQUIRED`).
 - Branch: **`codex/windows-validation-7450451b`**.
-- Input revision: **`7cc91be95c34d90cf47b33df02b44cfb43fd7a65`** (`7cc91be9`, Windows manual 200% DPI review at `4f45874f`).
-- Cross-platform work completed (this batch):
-  1. **M1 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: added `.batch-form-options + .settings-help { margin-top: 12px; }` in [`desktop/src/style.css`](../../desktop/src/style.css) so the toggle row in `归档输出设置` has `12px` clearance above the description paragraph.
-  2. **M2 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: added `.settings-panel-content .settings-message-error + .ui-button, .settings-panel-content .settings-message-error + .button-row { margin-top: 14px; }` in [`desktop/src/style.css`](../../desktop/src/style.css) so `.settings-message-error` keeps `14px` breathing room above the action button/row (without adding trailing bottom space when the error strip is last).
-  3. **M3 (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: wrapped `aria2c` in `<code>aria2c</code>` for both the `aria2` status row (`renderAria2StatusText` in [`desktop/src/pages/download-config-page.jsx`](../../desktop/src/pages/download-config-page.jsx), keeping `aria2StatusText` string contract in [`desktop/src/lib/ui-state.js`](../../desktop/src/lib/ui-state.js) intact) and the bottom SHA-256 note, styled `.aria2-status-row code` alongside `.aria2-help code`, and updated `.path-display` in [`desktop/src/style.css`](../../desktop/src/style.css) to match `.copyable-path` (`1px solid var(--border)`, `7px` radius, `8px 10px` padding, `var(--surface-subtle)` background, `min-height: 46px`).
-  4. **M4 (`CROSS_PLATFORM_REVIEW_REQUIRED`, optional)**: evaluated and confirmed **keep as-is** — the `归档输出设置` / `配置交换` paragraphs carry tested contractual disclosures (D1 recovery manifest & F2 exchange drain/restart semantics), and `.settings-field textarea { resize: none; }` intentionally suppresses WebView2's diagonal resize grip on both disabled and editable textareas inside 7px-radius cards.
-  5. **Tests & architecture baseline**: added M1–M3 source-contract assertions in [`desktop/test/ui-wiring.test.mjs`](../../desktop/test/ui-wiring.test.mjs) and resealed [`scripts/architecture-baseline.json`](../../scripts/architecture-baseline.json) for `download-config-page.jsx` (`80 -> 85` lines).
-- Linux validation gates executed after final code edit:
-  - `cargo test --workspace --offline`: **PASS**
-  - `npm --prefix desktop test`: **PASS** (`tests 285`, `suites 17`, `pass 282`, `fail 0`, `skipped 3` Windows-only skips)
-  - `npm --prefix desktop run build`: **PASS** (Vite production build, `933ms`)
-  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 44 js/ts, 28 relative edges, 0 findings`)
-  - `node scripts/docs-audit.mjs`: **PASS**
-  - `git diff --check`: **PASS**
-- Windows work required:
-  - Re-verify **M1–M3** on a fresh build from this handoff commit (`.batch-form-options + .settings-help` `12px`, `.settings-message-error` to `保存下载器参数` `14px`, `aria2c` monospace `<code>` pills and bordered `.path-display` slot). Automated R1–R7, non-zero Dashboard/Jobs metrics, and W7 opt-in specs already passed on `4f45874f` / `b2a41a45`.
+- Validated input revision: **`a5a2dd0d63d80c15e1c98c96fe9f09d5ec65aea9`** (`a5a2dd0d`, M1–M3 UI micro-polish & M4 review on top of `7cc91be9`).
+- Fresh Windows Release build at `a5a2dd0d`:
+  - WDIO dev-channel Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `a5cf2dad0f5125a57e028c5834bc721515c41c13da8647e328a51b1449996406`.
+  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- Executed Windows re-verification at `a5a2dd0d` (`a5cf2dad...`, Light + Dark, isolated root `target/ui-m1-m3-root-a5a2dd0d-20261125161154`, evidence `target/ui-m1-m3-a5a2dd0d-20261125161154/runner.log`, `1 passing (2.9s)`):
+  - **M1 (`归档输出设置`)**: **PASS** — `#output-settings .batch-form-options + .settings-help` `marginTop: "12px"` in both Light & Dark.
+  - **M2 (`下载器参数`)**: **PASS** — `#downloader-arguments .settings-panel-content .settings-message-error + .ui-button` `marginTop: "14px"` and measured vertical gap `14px` in both Light & Dark.
+  - **M3 (`aria2` 面板)**: **PASS** — `.aria2-status-row code` & `.aria2-section-note code` render `"aria2c"` in `"Cascadia Mono", "Segoe UI Mono", Consolas, monospace`; unset `.aria2-path-controls .path-display` (`尚未检测到 aria2 可执行文件`) renders `1px solid`, `7px` radius, `8px 10px` padding, `minHeight: 46px`, and `--surface-subtle` (`rgb(250, 250, 250)` Light / `rgb(32, 35, 40)` Dark).
+  - **M4 (`归档输出设置 / 配置交换` 长段文本 & `<textarea>` `resize: none`)**: closed as-is per Cross-platform Owner review.
+  - **Prior PASS results**: R1 & non-zero Dashboard/Jobs metrics (`4f45874f`, `38208f34...`), R2–R6, R7 focus ring, `npm --prefix desktop test` (284 tests), and W7 opt-in WDIO specs (`focus`, `held-busy`, `moved-focus`) at `b2a41a45` (`0fcdf82a...`).
+- Remaining non-blocking queue items (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - `Core Bootstrap` missing-catalog `.dependency-missing`: **NOT_RUN** (`components.rs` embedded catalog `2026-09-20-u9` has `components_required: 0` until populated release assets ship).
+  - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
 - `WINDOWS_BLOCKING`: **none**.
 
 ---
