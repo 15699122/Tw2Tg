@@ -30,6 +30,7 @@ impl ArchiveService {
     /// Preview an archive using only the existing staging tree for one durable
     /// attempt. Unlike the legacy preview, this never creates or falls back to
     /// the Job-scoped staging directory.
+    #[allow(clippy::too_many_arguments)]
     pub fn preview_sidecar_archive_attempt(
         &self,
         job_id: &str,

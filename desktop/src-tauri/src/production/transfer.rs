@@ -43,6 +43,7 @@ use crate::executor::CancellationToken;
 use super::media_type_name;
 use super::sidecar_operations::extract_v2;
 
+#[allow(clippy::result_large_err)]
 pub(super) fn execute_aria2_archive(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
@@ -93,6 +94,7 @@ pub(super) fn execute_aria2_archive(
 }
 
 #[cfg(any(target_os = "linux", windows))]
+#[allow(clippy::result_large_err)]
 pub(super) fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
@@ -211,6 +213,7 @@ pub(super) fn transfer_once(
     run_transfer_with_supervisor(plan, cancellation, network, aria2)
 }
 
+#[allow(clippy::result_large_err)]
 pub(super) fn run_transfer_with_supervisor(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
@@ -267,35 +270,32 @@ pub(super) fn run_transfer_with_supervisor(
                     retained_supervisor: Some(aria2),
                 });
             }
-            return Err(TransferAttemptFailure::diagnostic(failure));
+            Err(TransferAttemptFailure::diagnostic(failure))
         }
-        (Ok(_), Err(_), _) => {
-            return Err(TransferAttemptFailure {
-                diagnostic: TransferFailure {
-                    media_id: None,
-                    code: TransferFailureCode::ShutdownIncomplete,
-                    message: "aria2 cancellation monitor panicked during shutdown".to_owned(),
-                    aria2_error_code: None,
-                    completed: Vec::new(),
-                },
-                retained_supervisor: Some(aria2),
-            });
-        }
-        (Ok(_), Ok(()), Err(error)) => {
-            return Err(TransferAttemptFailure {
-                diagnostic: TransferFailure {
-                    media_id: None,
-                    code: TransferFailureCode::ShutdownIncomplete,
-                    message: format!("aria2 shutdown incomplete: {error}"),
-                    aria2_error_code: None,
-                    completed: Vec::new(),
-                },
-                retained_supervisor: Some(aria2),
-            });
-        }
+        (Ok(_), Err(_), _) => Err(TransferAttemptFailure {
+            diagnostic: TransferFailure {
+                media_id: None,
+                code: TransferFailureCode::ShutdownIncomplete,
+                message: "aria2 cancellation monitor panicked during shutdown".to_owned(),
+                aria2_error_code: None,
+                completed: Vec::new(),
+            },
+            retained_supervisor: Some(aria2),
+        }),
+        (Ok(_), Ok(()), Err(error)) => Err(TransferAttemptFailure {
+            diagnostic: TransferFailure {
+                media_id: None,
+                code: TransferFailureCode::ShutdownIncomplete,
+                message: format!("aria2 shutdown incomplete: {error}"),
+                aria2_error_code: None,
+                completed: Vec::new(),
+            },
+            retained_supervisor: Some(aria2),
+        }),
     }
 }
 
+#[allow(clippy::result_large_err, clippy::type_complexity)]
 pub(super) fn transfer_with_one_refresh(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,

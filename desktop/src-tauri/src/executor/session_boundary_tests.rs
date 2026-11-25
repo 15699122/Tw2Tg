@@ -1311,6 +1311,7 @@ fn runtime_replacement_joins_active_writer_then_runs_successor() {
     let successor_flag = successor_ran.clone();
     let replacement_thread = std::thread::spawn(move || {
         let result = state.replace_executor(replacement_config);
+        #[allow(clippy::question_mark)]
         if result.is_err() {
             // A failed replacement must not be reported as "completed while
             // the writer was active"; the error is surfaced after the join.

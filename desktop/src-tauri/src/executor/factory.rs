@@ -381,6 +381,7 @@ impl ProductionExecutionFactory {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod production_factory_attempt_tests {
     use std::path::PathBuf;
 

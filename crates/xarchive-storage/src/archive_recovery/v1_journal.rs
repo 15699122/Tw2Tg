@@ -25,7 +25,7 @@ impl Database {
             .optional()?;
         if identity
             != Some((
-                Some(i64::from(ArchiveRecoveryContract::InternalV1.version())),
+                Some(ArchiveRecoveryContract::InternalV1.version()),
                 i64::from(manifest.attempt_count),
                 "DOWNLOADING".to_owned(),
             ))

@@ -23,6 +23,7 @@ fn bounded_diagnostic(value: &str, limit: usize) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod frontend_diagnostic_tests {
     use super::{bounded_diagnostic, jobs::redact_job_errors};
     use xarchive_core::JobState;

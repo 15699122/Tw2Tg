@@ -209,7 +209,7 @@ impl Database {
             ));
         };
         if attempt_count != i64::from(manifest.attempt_count)
-            || contract != Some(i64::from(ArchiveRecoveryContract::InternalV1.version()))
+            || contract != Some(ArchiveRecoveryContract::InternalV1.version())
             || !matches!(state.as_str(), "DOWNLOADING" | "DOWNLOADED")
             || tweet_row_id != manifest.tweet_row_id
             || journal_attempt != i64::from(manifest.attempt_count)

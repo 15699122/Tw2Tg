@@ -78,6 +78,7 @@ pub struct PendingArchivePublication {
 impl PendingArchivePublication {
     /// Freeze verified attempt facts and transfer the exact execution-owned
     /// Storage and process handles into the runner's move-only pending value.
+    #[allow(clippy::too_many_arguments, clippy::result_large_err)]
     fn from_verified_facts(
         context: ArchiveExecutionContext,
         facts: AttemptArchiveFacts,
@@ -555,10 +556,10 @@ impl JobExecution for ArchiveExecutionJob {
             cancellation,
         ) {
             Ok((context, result)) => {
-                if let Some(context) = context {
-                    if let Ok(mut stored) = self.context.lock() {
-                        *stored = Some(context);
-                    }
+                if let Some(context) = context
+                    && let Ok(mut stored) = self.context.lock()
+                {
+                    *stored = Some(context);
                 }
                 Ok(result)
             }
@@ -579,7 +580,7 @@ impl JobExecution for ArchiveExecutionJob {
 /// distinct input to the execution contract; bundling them into a struct would
 /// be a shared-signature change that needs its own reviewed batch, so the lint
 /// is scoped here instead of refactored as a drive-by.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn execute_archive_context(
     mut context: ArchiveExecutionContext,
     request: &ArchiveTweetRequest,
@@ -908,6 +909,7 @@ impl ArchiveExecutionContext {
         )
     }
 
+    #[allow(clippy::result_large_err)]
     pub(crate) fn download_v2(
         &mut self,
         request: &ArchiveTweetRequest,

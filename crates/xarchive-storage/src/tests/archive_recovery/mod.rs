@@ -103,7 +103,7 @@ fn replay_crashed_v1_window_with_exports(root: &Path, window: &str, exports_disa
 
     let mut service = ArchiveService::new(
         Database::open(root.join("database.sqlite3")).expect("reopen database"),
-        FileStore::with_staging_root(&root.join("archive"), &staging_root)
+        FileStore::with_staging_root(root.join("archive"), &staging_root)
             .expect("reopen file store"),
     );
     let events_before = service
@@ -270,7 +270,7 @@ fn assert_attempt_fenced_terminal_convergence(
 fn run_v1_crash_window_child(root: &Path, window: &str) -> ! {
     use crate::{ArchiveRecoveryFailpoint, BatchOutputSettings, SidecarArchiveRequest};
     let mut database = Database::open(root.join("database.sqlite3")).expect("child database");
-    let files = FileStore::with_staging_root(&root.join("archive"), &root.join("staging"))
+    let files = FileStore::with_staging_root(root.join("archive"), root.join("staging"))
         .expect("child file store");
     let tweet_row_id = database
         .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")

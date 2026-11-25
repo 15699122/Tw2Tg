@@ -85,6 +85,7 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn internal_v1_recovery_identity(
         &self,
         job_id: &str,

@@ -189,41 +189,30 @@ fn contained_internal_v1_cancellation_drains_writer_domain()
     // Negative control: a cancel addressed to a different job must not stop the
     // running transfer. It reports CANCELLED with the "no matching extraction"
     // message, and no INTERRUPTED for the active job may follow.
-    loop {
-        match supervisor
-            .recv_timeout(Duration::from_secs(5))?
-            .expect("worker must acknowledge the download command")
-        {
-            SupervisorEvent::V2(event)
-                if event.event == SidecarV2EventType::DownloadStarted
-                    && event.job_id == "job-cancel" =>
-            {
-                break;
-            }
-            SupervisorEvent::Exited(_) => panic!("worker exited before download_started"),
-            other => panic!("unexpected event before download_started: {other:?}"),
-        }
+    match supervisor
+        .recv_timeout(Duration::from_secs(5))?
+        .expect("worker must acknowledge the download command")
+    {
+        SupervisorEvent::V2(event)
+            if event.event == SidecarV2EventType::DownloadStarted
+                && event.job_id == "job-cancel" => {}
+        SupervisorEvent::Exited(_) => panic!("worker exited before download_started"),
+        other => panic!("unexpected event before download_started: {other:?}"),
     }
     supervisor
         .send_v2_cancel("req-wrong-job", "job-unrelated")
         .expect("cancel for an unrelated job is delivered");
-    loop {
-        match supervisor
-            .recv_timeout(Duration::from_secs(5))?
-            .expect("unrelated cancel must be answered")
-        {
-            SupervisorEvent::V2(event)
-                if event.event == SidecarV2EventType::Failed
-                    && event.job_id == "job-unrelated"
-                    && event.error_code.as_deref() == Some("CANCELLED")
-                    && event.error_message.as_deref()
-                        == Some("no matching extraction is running") =>
-            {
-                break;
-            }
-            SupervisorEvent::Exited(_) => panic!("worker exited on an unrelated cancel"),
-            other => panic!("unrelated cancel produced an unexpected event: {other:?}"),
-        }
+    match supervisor
+        .recv_timeout(Duration::from_secs(5))?
+        .expect("unrelated cancel must be answered")
+    {
+        SupervisorEvent::V2(event)
+            if event.event == SidecarV2EventType::Failed
+                && event.job_id == "job-unrelated"
+                && event.error_code.as_deref() == Some("CANCELLED")
+                && event.error_message.as_deref() == Some("no matching extraction is running") => {}
+        SupervisorEvent::Exited(_) => panic!("worker exited on an unrelated cancel"),
+        other => panic!("unrelated cancel produced an unexpected event: {other:?}"),
     }
     assert!(
         supervisor.is_running().unwrap(),
@@ -243,23 +232,18 @@ fn contained_internal_v1_cancellation_drains_writer_domain()
 
     // Production download cancellation surfaces as INTERRUPTED for the exact
     // active job; anything else means the active transfer was not the target.
-    loop {
-        match supervisor
-            .recv_timeout(Duration::from_secs(5))?
-            .expect("cancel must be acknowledged for the active download")
-        {
-            SupervisorEvent::V2(event)
-                if event.event == SidecarV2EventType::Failed
-                    && event.job_id == "job-cancel"
-                    && event.error_code.as_deref() == Some("INTERRUPTED") =>
-            {
-                break;
-            }
-            SupervisorEvent::Exited(_) => {
-                panic!("worker exited before the active download was cancelled")
-            }
-            other => panic!("active cancel produced an unexpected event: {other:?}"),
+    match supervisor
+        .recv_timeout(Duration::from_secs(5))?
+        .expect("cancel must be acknowledged for the active download")
+    {
+        SupervisorEvent::V2(event)
+            if event.event == SidecarV2EventType::Failed
+                && event.job_id == "job-cancel"
+                && event.error_code.as_deref() == Some("INTERRUPTED") => {}
+        SupervisorEvent::Exited(_) => {
+            panic!("worker exited before the active download was cancelled")
         }
+        other => panic!("active cancel produced an unexpected event: {other:?}"),
     }
 
     // A completed drain proves the cancellation did not leave an escaped writer.

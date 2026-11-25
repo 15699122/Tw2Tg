@@ -173,7 +173,7 @@ sys.stdin.read()
         let mut scenario_domain = domain.clone();
         scenario_domain.identity = xarchive_workflow::linux_containment::AttemptIdentity::new(
             &plan.items[0].directory,
-            &format!("refresh-{scenario}"),
+            format!("refresh-{scenario}"),
             1,
         )
         .unwrap();

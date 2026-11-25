@@ -258,6 +258,7 @@ fn prepared_replay_is_atomic_under_sql_fault_and_terminal_convergence_is_idempot
     let staging_root = root.join("staging");
     std::fs::create_dir_all(&root).expect("fixture root");
     let database_path = root.join("database.sqlite3");
+    #[allow(clippy::redundant_closure_call)]
     let result = (|| {
         let mut database = Database::open(&database_path).expect("database");
         let files = FileStore::with_staging_root(&archive_root, &staging_root)

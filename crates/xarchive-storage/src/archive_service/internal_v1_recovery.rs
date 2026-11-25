@@ -76,7 +76,7 @@ impl ArchiveService {
             || journal.phase != ArchiveRecoveryPhase::Prepared
             || self
                 .files
-                .recovery_directory_exists(job_id, &Path::new("_staging").join(job_id))?
+                .recovery_directory_exists(job_id, Path::new("_staging").join(job_id))?
         {
             return Err(StorageError::InvalidMetadata(
                 "attempt recovery identity does not match the live journal".into(),

@@ -463,7 +463,7 @@ fn production_real_aria2_drains_recorded_writer() {
     publication_owner.close_admission().unwrap();
     let permit = publication_owner.authorize(&session).unwrap();
     assert_eq!(permit.attempt().attempt(), 1);
-    drop(permit);
+    let _ = permit;
     drop(session);
     drop(coordinator);
     assert!(

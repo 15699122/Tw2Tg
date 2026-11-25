@@ -79,9 +79,12 @@ fn spawn_preserves_argv_order_and_keeps_rpc_secret_out_of_argv() {
     ));
     std::fs::create_dir(&capture_dir).expect("isolated capture directory");
     let argv_path = capture_dir.join("argv.json");
+    let argv_tmp_path = capture_dir.join("argv.json.tmp");
     let fake_executable = capture_dir.join("fake-aria2");
     let script = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexec sleep 10\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}' && mv '{}' '{}'\nexec sleep 10\n",
+        argv_tmp_path.display(),
+        argv_tmp_path.display(),
         argv_path.display()
     );
     std::fs::write(&fake_executable, script).expect("write fake executable");
@@ -102,6 +105,11 @@ fn spawn_preserves_argv_order_and_keeps_rpc_secret_out_of_argv() {
     .with_user_args(vec!["--max-tries".into(), "7".into()]);
     let mut supervisor = Aria2Supervisor::spawn(config).expect("fake aria2 starts");
     server.join().expect("readiness server completes");
+
+    let wait_deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while !argv_path.exists() && std::time::Instant::now() < wait_deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
 
     let captured: Vec<String> = std::fs::read_to_string(&argv_path)
         .expect("captured child argv")

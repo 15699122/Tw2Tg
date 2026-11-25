@@ -16,7 +16,7 @@ pub enum SupervisorError {
 /// The owner is intentionally move-only. A failed cleanup returns this same
 /// value so callers cannot accidentally replace it with a reconstructed handle.
 pub struct StartupFailureOwner {
-    supervisor: crate::SidecarSupervisor,
+    supervisor: Box<crate::SidecarSupervisor>,
     startup_error: Box<SupervisorError>,
 }
 
@@ -30,7 +30,7 @@ impl StartupFailureOwner {
     /// boundary) that cannot observe this crate's internal failure paths.
     pub fn new(supervisor: crate::SidecarSupervisor, startup_error: SupervisorError) -> Self {
         Self {
-            supervisor,
+            supervisor: Box::new(supervisor),
             startup_error: Box::new(startup_error),
         }
     }

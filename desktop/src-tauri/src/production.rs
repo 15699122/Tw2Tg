@@ -55,6 +55,7 @@ use transfer::{
     transfer_once, transfer_with_one_refresh,
 };
 
+#[allow(clippy::result_large_err)]
 pub(crate) fn execute_v2_archive(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,

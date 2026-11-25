@@ -350,10 +350,9 @@ impl JobExecutorHandle {
                 _ => unreachable!("only an operation command was sent"),
             };
         }
-        let result = response_receiver
+        response_receiver
             .recv()
-            .map_err(|_| ExecutorError::ResponseClosed)?;
-        result
+            .map_err(|_| ExecutorError::ResponseClosed)?
     }
 
     pub fn submit(&self, request: ArchiveJobRequest) -> Result<SubmitResult, ExecutorError> {

@@ -624,7 +624,7 @@ fn legacy_internal_recovery_refuses_without_mutating_attempt() {
             "now",
         )
         .expect("InternalV1 job");
-    let files = FileStore::with_staging_root(&root.join("archive"), &root.join("staging"))
+    let files = FileStore::with_staging_root(root.join("archive"), root.join("staging"))
         .expect("file store");
     let staging = files.staging_dir("job-1").expect("staging");
     std::fs::write(staging.join("01.jpg"), b"abc").expect("media");

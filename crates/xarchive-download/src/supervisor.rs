@@ -356,6 +356,7 @@ impl Aria2Supervisor {
     /// Owned startup form for attempt coordinators which must retain an
     /// incompletely cleaned writer owner after any startup failure.
     #[cfg(target_os = "linux")]
+    #[allow(clippy::result_large_err)]
     pub fn spawn_contained_owned(
         config: Aria2SupervisorConfig,
         owner: xarchive_workflow::linux_containment::LinuxContainment,

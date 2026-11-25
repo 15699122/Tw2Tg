@@ -388,7 +388,7 @@ pub(super) fn recover_v2_on_runner(
                         // Defensive only: `resolve_session_run` above consumed
                         // the pending owner, so no live owner remains here.
                         SessionRunOutcome::StartupCleanupPending { job_id, .. } => {
-                            Err(format!("unresolved startup cleanup decision for {job_id}").into())
+                            Err(format!("unresolved startup cleanup decision for {job_id}"))
                         }
                     });
             }
