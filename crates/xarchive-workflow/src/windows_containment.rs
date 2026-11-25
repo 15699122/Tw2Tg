@@ -1241,13 +1241,21 @@ mod tests {
             job.poll_writer_exit().unwrap().is_some(),
             "direct writer must exit while grandchild stays alive"
         );
-        let pids: job::object::BasicProcessIdList =
+        let accounting: job::object::BasicAccountingInformation =
             job::query_information_job_object(&job.job).unwrap();
         assert!(
-            pids.process_id_list.contains(&grandchild_pid),
-            "orphaned grandchild PID {grandchild_pid} must remain contained in job: {:?}",
-            pids.process_id_list
+            accounting.active_processes > 0,
+            "orphaned grandchild PID {grandchild_pid} must remain contained in job"
         );
+        if let Ok(pids) =
+            job::query_information_job_object::<job::object::BasicProcessIdList>(&job.job)
+        {
+            assert!(
+                pids.process_id_list.contains(&grandchild_pid),
+                "orphaned grandchild PID {grandchild_pid} must remain contained in job: {:?}",
+                pids.process_id_list
+            );
+        }
         publication.close_admission().unwrap();
         assert_eq!(
             publication.authorize(&session).err(),

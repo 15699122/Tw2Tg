@@ -110,6 +110,8 @@ jobs:
 
       - name: Run Rust tests
         shell: pwsh
+        env:
+          TW2TG_DESKTOP_KEEPER_EXE: ${{ github.workspace }}\target\release\xarchive-desktop.exe
         run: cargo test --workspace --locked
 
       - name: Build Native Messaging Host
