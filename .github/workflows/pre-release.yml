@@ -70,7 +70,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Rust workspace tests
-        run: cargo test --workspace --no-fail-fast
+        run: |
+          cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe
+          cargo test --workspace --no-fail-fast
 
       - name: Rust workspace clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
