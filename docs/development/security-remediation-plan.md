@@ -18,11 +18,11 @@
 | PR #15 | `.github/dependabot.yml` 为 `npm-security` 与 `cargo-security` 补齐 `patterns: ["*"]` 与 `update-types` | 已在 `dev` 合入（`2d86e88c`） | 修复 Dependabot schema 校验与分组匹配 |
 | PR #16 / Dependabot #26–#29 | `rustls` `0.23.45 → 0.23.46`（`Cargo.lock`） | 已在 `dev` 合入（`dc9e2326`） | 关闭 4 条 `rustls` 运行时告警（1 medium / 3 low） |
 
-### 7.2 独立安全分支待修补项（`security/dependency-advisories-2026-11-25`）
+### 7.2 独立安全分支已修补项（`security/dependency-advisories-2026-11-25`）
 
 - **Dependabot #21, #23, #31–#37（`undici`，7 high + 2 medium，`development`，`package-lock.json`）**：
-  - 依赖链：`undici@7.29.1`（`cheerio@1.2.0` ← `webdriverio@9.31.9` ← `@wdio/cli@9.31.9`，补丁版本 `7.30.1`）与 `undici@6.28.1`（`webdriver@9.31.9` / `webdriver@9.30.1` ← `@wdio/cli` / `@wdio/tauri-service@1.4.0`，补丁版本 `6.29.1`）。
-  - 仅在开发/E2E 测试工具链中使用，不进入 Desktop / Extension 发布产物；已在 `security/dependency-advisories-2026-11-25` 分支推进小版本/补丁升级与验证。
+  - 依赖链：`undici@7.29.1`（`cheerio@1.2.0` ← `webdriverio@9.31.9` ← `@wdio/cli@9.31.9`）与 `undici@6.28.1`（`webdriver@9.31.9` / `webdriver@9.30.1` ← `@wdio/cli` / `@wdio/tauri-service@1.4.0`）。
+  - 已通过 `npm update undici` 在仅修改 `package-lock.json` 的前提下升级至 `undici@7.30.2` 与 `undici@6.29.1`（共变更 3 个包，未改动 `package.json` 或业务源码）；该依赖仅用于开发/E2E 测试工具链，不进入 Desktop / Extension 发布产物。
 
 ### 7.3 当前无法使用小补丁处理的告警（保留记录与风险边界）
 
