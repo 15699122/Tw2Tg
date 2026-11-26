@@ -763,8 +763,8 @@
     },
     "desktop/src-tauri/src/commands/extension.rs": {
       "category": "rust-desktop",
-      "lines": 345,
-      "sha256": "fbcb52d9e72fd373ef21308cba040fd16a30b8863678182ce3235c69ce35247a"
+      "lines": 398,
+      "sha256": "562557b32e22a998fbee802752194e34a90d65099f01a9d9a2b47582d781ca37"
     },
     "desktop/src-tauri/src/commands/jobs.rs": {
       "category": "rust-desktop",
@@ -883,8 +883,8 @@
     },
     "desktop/src-tauri/src/executor/runtime/application_service.rs": {
       "category": "rust-desktop",
-      "lines": 941,
-      "sha256": "f892c3ba6dd4ecc91ce07afaa370031ddce5aa1b3fe6ed8bd277a09f39ea7213"
+      "lines": 1047,
+      "sha256": "d7095b3b6d3a5ab9d2d38c936cd1f33200a5ccfb92efd082069fa74ea93deee2"
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
@@ -913,8 +913,8 @@
     },
     "desktop/src-tauri/src/executor/tests/persistence_spec.rs": {
       "category": "rust-desktop",
-      "lines": 1882,
-      "sha256": "f8b84ffd9725e20ace5c62c02ccb55d0097c90e9f1d7be77523d7ffa14035d61"
+      "lines": 1936,
+      "sha256": "5561b9dd7a674bb9a0390ad0045d643364af49c627f0df52d6570ccd2a3cfc59"
     },
     "desktop/src-tauri/src/executor/tests/scheduling_cancel_shutdown.rs": {
       "category": "rust-desktop",
@@ -1329,7 +1329,7 @@
     "extension/src/content-core.js": {
       "category": "frontend-source",
       "lines": 290,
-      "sha256": "a4020a9df9af8ee5736fab8c331e5d95e2cfe353739fdbeeda1cee41307729a2"
+      "sha256": "fd6638c6f6b5d0ea468ea4243faa2992859635b2c5c43bf5607906547c5fb214"
     },
     "extension/src/content.js": {
       "category": "frontend-source",
@@ -1358,8 +1358,8 @@
     },
     "extension/tests/content.test.js": {
       "category": "frontend-source",
-      "lines": 285,
-      "sha256": "886d156703c4d6a26f6a101151cbe604cb0a0145a3f3e6c503af908b94cf65fe"
+      "lines": 320,
+      "sha256": "b521b312198259d7afaff09c8f7ed58ffa18233fdf47a6a841ba2f916c954444"
     },
     "scripts/check-architecture.mjs": {
       "category": "frontend-source",

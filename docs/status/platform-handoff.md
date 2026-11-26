@@ -1,9 +1,48 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-26, live Edge + X test findings on `dev`)
+## Resume summary — authoritative cursor (2026-11-26, live Edge + X fixes & Extension UI alignment on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Branch: **`dev`**.
+- Source baseline: **`e6005bada7af80c72a6857c1a6fdd333b487f10a`** (`e6005bad`, Windows `live-e2e-976e03f1` findings).
+- Completed Cross-platform fixes on `dev`:
+  1. **`QUEUED` silent stall fixed ([`application_service.rs`](../../desktop/src-tauri/src/executor/runtime/application_service.rs))**:
+     - Replaced silent `else { return; }` / `let _ = ...` drops in `schedule_persisted` with shared `run_scheduled_session`:
+       - `Reschedulable` (`Contended`) and `ExecutorError::QueueFull` now log `[xarchive-schedule]` diagnostics and retry boundedly (up to 50 × 100ms, re-opening persistence and `ProductionCoordinator`) instead of stranding concurrent or contended jobs in `QUEUED`.
+       - Coordinator open failures, pre-claim `execute_on_runner` errors, and `resolve_session_run` failures now log `[xarchive-schedule]` diagnostics and persist terminal `FAILED` + `ExecutorEvent::DownloadFailed` when `persistence_already_updated` is false.
+     - Added regression test `schedule_persisted_records_failure_instead_of_leaving_job_queued_when_runner_rejects_before_claim` in [`persistence_spec.rs`](../../desktop/src-tauri/src/executor/tests/persistence_spec.rs).
+  2. **Sidebar `Extension` connection status merged with WebSocket ([`commands/extension.rs`](../../desktop/src-tauri/src/commands/extension.rs))**:
+     - Extracted `combine_browser_connection(named_pipe, websocket_connection, websocket_authenticated)` and wired `#[cfg(windows)]` `extension_status_from_state` to promote `browser_connection` to `"connected"` whenever `websocket_authenticated` or `websocket_connection == "connected"` (matching the documented contract and fixing red `未连接` in `extensionSidebarState`).
+     - Added unit test `combine_browser_connection_promotes_authenticated_websocket`.
+  3. **Extension UI aligned to desktop design tokens**:
+     - [`extension/options.css`](../../extension/options.css) & [`extension/popup.css`](../../extension/popup.css): replaced legacy purple (`#9b63e9` / `#a76be7` / `#7e48ce` / `#d9bdf7`) with desktop tokens (`#171717` primary button, `#2e6f59` checked toggle/status, `#0067c0` focus outline, `#e5e5e5` border), added `align-items: center` to `.card-heading`, and relaxed `h2` / `.card-heading p` / `.state-line` spacing.
+     - [`extension/src/content-core.js`](../../extension/src/content-core.js): replaced hardcoded `#1b2a1b` / `#c6f277` / `#53684b` tweet button styling with theme-adaptive neutral + `#2e6f59` forest-green styling, and added unit test in [`extension/tests/content.test.js`](../../extension/tests/content.test.js).
+  4. **Retired `use_aria2` WDIO specs removed**: deleted `desktop/e2e/specs/transfer-switch-focus.e2e.mjs`, `transfer-switch-held-busy.e2e.mjs`, `transfer-switch-moved-focus.e2e.mjs`, and `transfer-save-failure.e2e.mjs`.
+- Linux validation gates passed on `dev`:
+  - `cargo fmt --all -- --check`: **PASS**
+  - `cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe --offline`: **PASS**
+  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (0 failed across all workspace crates & doctests; `xarchive-desktop --lib`: `378 passed, 0 failed, 15 ignored`)
+  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
+  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
+  - `npm --prefix desktop run build`: **PASS**
+  - `npm --prefix extension test`: **PASS** (`58 pass, 0 fail`)
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
+  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
+- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - Rebuild `xarchive-desktop.exe` on `dev` and re-run the live Edge + real X account end-to-end test across **3 real tweets (single photo / multi-photo / single video)** (`Extension -> Desktop -> aria2c.exe`), verifying:
+    1. Jobs transition out of `QUEUED` and complete (or surface explicit `FAILED` diagnostics if a pre-claim/execution error occurs);
+    2. Sidebar `Extension` status shows green `已连接` when WebSocket is authenticated;
+    3. Extension options/popup & X tweet action button match desktop design tokens in Light/Dark X themes.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-26, live Edge + X test findings on `dev`
 
 ### Cursor
 

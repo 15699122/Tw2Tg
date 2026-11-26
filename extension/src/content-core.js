@@ -236,7 +236,7 @@
     button.type = "button";
     button.setAttribute(BUTTON_ATTRIBUTE, tweet.tweet_id);
     setArchiveButtonState(button, "idle");
-    button.style.cssText = "margin-left:8px;border:1px solid #53684b;border-radius:999px;padding:4px 9px;color:#c6f277;background:#1b2a1b;cursor:pointer;font:11px sans-serif";
+    button.style.cssText = "margin-left:8px;border:1px solid rgba(46,111,89,0.45);border-radius:999px;padding:4px 10px;color:#2e6f59;background:rgba(46,111,89,0.10);cursor:pointer;font:600 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
     button.addEventListener("click", () => onArchive(tweet, button));
     const toolbar = article.querySelector?.('[role="group"]') || article;
     toolbar.append(button);

@@ -477,6 +477,60 @@ fn submit_and_schedule_persists_background_executor_failure() {
     let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
 }
 
+#[test]
+fn schedule_persisted_records_failure_instead_of_leaving_job_queued_when_runner_rejects_before_claim()
+ {
+    let database_path = temporary_database_path("schedule-preclaim-failure");
+    std::fs::create_dir_all(database_path.parent().expect("database parent")).expect("parent");
+    let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+    let executor = JobExecutor::new();
+    let service = ArchiveApplicationService::new(&executor);
+
+    let submitted = service
+        .submit_persisted(
+            &mut persistence,
+            request("job-preclaim-failure", "tweet-preclaim-failure"),
+        )
+        .expect("submit persisted");
+    assert!(submitted.created);
+    assert_eq!(submitted.job.state, JobState::Queued);
+
+    // Shut down the executor before scheduling so `execute_on_runner` fails
+    // before `claim_attempt`; the detached scheduler must persist FAILED
+    // rather than silently leaving the job stuck in QUEUED.
+    executor.shutdown().expect("shutdown executor");
+    #[cfg(windows)]
+    let workspace = xarchive_workflow::maintenance::WorkspaceGuard::try_enter(
+        &database_path.parent().unwrap().join("locks"),
+    )
+    .expect("workspace guard");
+    service
+        .schedule_persisted(
+            database_path.clone(),
+            submitted.job.job_id.clone(),
+            #[cfg(windows)]
+            workspace,
+        )
+        .expect("schedule detached thread");
+
+    let failed = wait_for_persisted_state(&database_path, "job-preclaim-failure", JobState::Failed);
+    assert_eq!(failed.state, JobState::Failed);
+    let persisted = StorageJobPersistence::open(&database_path).expect("reopen database");
+    assert!(matches!(
+        persisted
+            .stored_events("job-preclaim-failure")
+            .expect("events")
+            .last(),
+        Some((event_type, payload))
+            if event_type == "DOWNLOAD_FAILED"
+                && payload.as_deref().is_some_and(|payload| {
+                    payload.contains("EXECUTOR_UNAVAILABLE")
+                })
+    ));
+
+    let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
+}
+
 #[cfg(windows)]
 #[test]
 fn maintenance_refuses_submission_before_persisting_the_job() {

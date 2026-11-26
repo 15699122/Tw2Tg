@@ -26,7 +26,8 @@ use super::super::{
     ArchiveJobRequest, CancelArbitration, CancellationToken, CommitRecoveryBatchResult,
     CommitRecoveryDecision, CommitRecoveryFacts, CommitRecoveryFactsProvider, ExecutorError,
     ExecutorEvent, JobExecution, JobExecutionResult, JobPersistence, JobSnapshot,
-    SessionExecutionBoundary, StorageJobPersistence, SubmitResult, resolve_session_run,
+    SessionExecutionBoundary, SessionRunOutcome, StorageJobPersistence, SubmitResult,
+    resolve_session_run,
 };
 use super::{JobExecutor, JobExecutorHandle};
 
@@ -196,7 +197,7 @@ impl ArchiveApplicationService {
     /// The thread only coordinates persistence and the existing bounded
     /// executor/runner. Long-running archive I/O remains owned by the
     /// executor's execution port and never runs under RuntimeState's mutex.
-    fn schedule_persisted(
+    pub(in crate::executor) fn schedule_persisted(
         &self,
         database_path: PathBuf,
         job_id: String,
@@ -215,66 +216,13 @@ impl ArchiveApplicationService {
         thread::Builder::new()
             .name(format!("xarchive-job-schedule-{job_id}"))
             .spawn(move || {
-                #[cfg(unix)]
-                {
-                    // Route ordinary submission through the owned SessionExecutionBoundary
-                    // (A4): runner admission → scopes → durable claim → factory → execute
-                    // → fenced finalize → session release → admission release.
-                    let Ok(persistence) = StorageJobPersistence::open(&database_path) else {
-                        return;
-                    };
-                    let Ok(coordinator) = ProductionCoordinator::open(&database_path) else {
-                        return;
-                    };
-                    let archive_root = database_path
-                        .parent()
-                        .and_then(Path::parent)
-                        .unwrap_or(Path::new("."))
-                        .to_owned();
-                    let boundary = SessionExecutionBoundary::new(
-                        service,
-                        persistence,
-                        coordinator,
-                        archive_root,
-                    );
-                    let _ = boundary
-                        .execute_on_runner(job_id)
-                        .and_then(resolve_session_run);
-                }
-                #[cfg(windows)]
-                {
-                    let Ok(persistence) = StorageJobPersistence::open(&database_path) else {
-                        return;
-                    };
-                    let Ok(coordinator) =
-                        ProductionCoordinator::from_admission(&database_path, workspace)
-                    else {
-                        return;
-                    };
-                    let archive_root = service.archive_root.clone().unwrap_or_else(|| {
-                        database_path
-                            .parent()
-                            .and_then(Path::parent)
-                            .unwrap_or(Path::new("."))
-                            .to_owned()
-                    });
-                    let boundary = SessionExecutionBoundary::new(
-                        service,
-                        persistence,
-                        coordinator,
-                        archive_root,
-                    );
-                    let _ = boundary
-                        .execute_on_runner(job_id)
-                        .and_then(resolve_session_run);
-                }
-                #[cfg(not(any(unix, windows)))]
-                {
-                    let Ok(mut persistence) = StorageJobPersistence::open(&database_path) else {
-                        return;
-                    };
-                    let _ = service.execute_persisted_from_factory(&mut persistence, &job_id);
-                }
+                run_scheduled_session(
+                    service,
+                    database_path,
+                    job_id,
+                    #[cfg(windows)]
+                    workspace,
+                );
             })
             .map(|_| ())
             .map_err(|error| ExecutorError::Execution {
@@ -938,4 +886,162 @@ impl ArchiveApplicationService {
             })
             .collect()
     }
+}
+
+const MAX_SCHEDULE_RESCHEDULE_ATTEMPTS: usize = 50;
+const SCHEDULE_RESCHEDULE_DELAY: std::time::Duration = std::time::Duration::from_millis(100);
+
+fn run_scheduled_session(
+    service: ArchiveApplicationService,
+    database_path: PathBuf,
+    job_id: String,
+    #[cfg(windows)] initial_workspace: xarchive_workflow::maintenance::WorkspaceGuard,
+) {
+    #[cfg(windows)]
+    let mut initial_workspace = Some(initial_workspace);
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        match StorageJobPersistence::open(&database_path) {
+            Ok(mut persistence) => {
+                if let Err(error) =
+                    service.execute_persisted_from_factory(&mut persistence, &job_id)
+                {
+                    eprintln!("[xarchive-schedule] job={job_id} execution failed: {error}");
+                    record_scheduled_failure_if_unupdated(&database_path, &job_id, &error);
+                }
+            }
+            Err(error) => {
+                eprintln!("[xarchive-schedule] job={job_id} failed to open persistence: {error}");
+            }
+        }
+        return;
+    }
+
+    #[cfg(any(unix, windows))]
+    for attempt in 0..MAX_SCHEDULE_RESCHEDULE_ATTEMPTS {
+        let persistence = match StorageJobPersistence::open(&database_path) {
+            Ok(persistence) => persistence,
+            Err(error) => {
+                eprintln!(
+                    "[xarchive-schedule] job={job_id} failed to open persistence on attempt {attempt}: {error}"
+                );
+                return;
+            }
+        };
+        #[cfg(unix)]
+        let coordinator = ProductionCoordinator::open(&database_path);
+        #[cfg(windows)]
+        let coordinator = match initial_workspace.take() {
+            Some(workspace) => ProductionCoordinator::from_admission(&database_path, workspace),
+            None => ProductionCoordinator::open_from_workspace(&database_path),
+        };
+        let coordinator = match coordinator {
+            Ok(coordinator) => coordinator,
+            Err(error) => {
+                eprintln!("[xarchive-schedule] job={job_id} failed to open coordinator: {error}");
+                record_scheduled_failure_if_unupdated(&database_path, &job_id, &error);
+                return;
+            }
+        };
+        #[cfg(unix)]
+        let archive_root = database_path
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or(Path::new("."))
+            .to_owned();
+        #[cfg(windows)]
+        let archive_root = service.archive_root.clone().unwrap_or_else(|| {
+            database_path
+                .parent()
+                .and_then(Path::parent)
+                .unwrap_or(Path::new("."))
+                .to_owned()
+        });
+        let boundary =
+            SessionExecutionBoundary::new(service.clone(), persistence, coordinator, archive_root);
+        match boundary
+            .execute_on_runner(job_id.clone())
+            .and_then(resolve_session_run)
+        {
+            Ok(SessionRunOutcome::Finished(_))
+            | Ok(SessionRunOutcome::StartupCleanupPending { .. }) => return,
+            Ok(SessionRunOutcome::Reschedulable { reason, .. }) => {
+                eprintln!(
+                    "[xarchive-schedule] job={job_id} reschedulable ({reason:?}) on attempt {attempt}"
+                );
+            }
+            Err(ExecutorError::QueueFull) => {
+                eprintln!(
+                    "[xarchive-schedule] job={job_id} runner queue full on attempt {attempt}"
+                );
+            }
+            Err(error) => {
+                eprintln!("[xarchive-schedule] job={job_id} execution failed: {error}");
+                record_scheduled_failure_if_unupdated(&database_path, &job_id, &error);
+                return;
+            }
+        }
+        thread::sleep(SCHEDULE_RESCHEDULE_DELAY);
+    }
+
+    #[cfg(any(unix, windows))]
+    eprintln!(
+        "[xarchive-schedule] job={job_id} remained reschedulable after {MAX_SCHEDULE_RESCHEDULE_ATTEMPTS} attempts; leaving QUEUED"
+    );
+}
+
+fn scheduled_error_code(error: &ExecutorError) -> &str {
+    match error {
+        ExecutorError::Closed => "EXECUTOR_UNAVAILABLE",
+        ExecutorError::QueueFull => "EXECUTOR_QUEUE_FULL",
+        ExecutorError::ResponseClosed => "EXECUTOR_RESPONSE_CLOSED",
+        ExecutorError::UnknownJob(_) => "EXECUTOR_UNKNOWN_JOB",
+        ExecutorError::InvalidTransition { .. } => "EXECUTOR_INVALID_TRANSITION",
+        ExecutorError::Persistence(_) => "EXECUTOR_PERSISTENCE_FAILED",
+        ExecutorError::Execution { error_code, .. } => error_code.as_str(),
+    }
+}
+
+fn record_scheduled_failure_if_unupdated(
+    database_path: &Path,
+    job_id: &str,
+    error: &ExecutorError,
+) {
+    if matches!(
+        error,
+        ExecutorError::Execution {
+            persistence_already_updated: true,
+            ..
+        }
+    ) {
+        return;
+    }
+    let Ok(mut persistence) = StorageJobPersistence::open(database_path) else {
+        eprintln!(
+            "[xarchive-schedule] job={job_id} failed to open persistence to record failure: {error}"
+        );
+        return;
+    };
+    let Ok(snapshot) = persistence.snapshot(job_id) else {
+        return;
+    };
+    if snapshot.state.is_terminal() {
+        return;
+    }
+    let error_code = scheduled_error_code(error).to_owned();
+    let error_message = error.to_string();
+    if let Err(persist_error) = persistence.fail(job_id, &error_code, &error_message) {
+        eprintln!(
+            "[xarchive-schedule] job={job_id} failed to persist terminal failure: {persist_error}"
+        );
+        return;
+    }
+    let _ = persistence.record_event(
+        job_id,
+        ExecutorEvent::DownloadFailed {
+            error_code,
+            error_message,
+        },
+    );
 }

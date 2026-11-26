@@ -11,6 +11,7 @@ const {
   articlesForMutation,
   archiveStatusToUiState,
   canonicalTweetUrl,
+  createArchiveButton,
   createStatusQueryBatches,
   extractTweet,
   parseTweetId,
@@ -282,4 +283,38 @@ test("updates button state and accessibility attributes", () => {
   assert.equal(button.disabled, true);
   assert.equal(attributes.get("aria-busy"), "true");
   assert.equal(attributes.get("aria-label"), "XArchive：归档中");
+});
+
+test("createArchiveButton uses desktop neutral + forest green theme tokens", () => {
+  const attributes = new Map();
+  const appended = [];
+  const createdButton = {
+    type: "",
+    dataset: {},
+    style: { cssText: "" },
+    setAttribute(name, value) { attributes.set(name, value); },
+    addEventListener() {},
+  };
+  const articleAttrs = new Map();
+  const article = {
+    hasAttribute: () => false,
+    setAttribute(name, value) { articleAttrs.set(name, value); },
+    querySelector(selector) {
+      if (selector === 'a[href*="/status/"]') {
+        return { getAttribute: () => "https://x.com/alice/status/2125606699356635170" };
+      }
+      if (selector === '[role="group"]') {
+        return { append(node) { appended.push(node); } };
+      }
+      return null;
+    },
+    querySelectorAll: () => [],
+    textContent: "fixture tweet",
+  };
+  const doc = { createElement: () => createdButton };
+  const button = createArchiveButton(article, () => {}, doc);
+  assert.equal(button, createdButton);
+  assert.equal(appended.length, 1);
+  assert.match(createdButton.style.cssText, /#2e6f59/);
+  assert.doesNotMatch(createdButton.style.cssText, /#1b2a1b|#c6f277/);
 });

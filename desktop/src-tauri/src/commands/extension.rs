@@ -33,6 +33,21 @@ pub struct ExtensionStatus {
     pub websocket_error: Option<String>,
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
+fn combine_browser_connection(
+    named_pipe: &str,
+    websocket_connection: &str,
+    websocket_authenticated: bool,
+) -> String {
+    if websocket_authenticated || websocket_connection == "connected" || named_pipe == "connected" {
+        "connected".to_owned()
+    } else if named_pipe == "disconnected" || websocket_connection == "disconnected" {
+        "disconnected".to_owned()
+    } else {
+        named_pipe.to_owned()
+    }
+}
+
 fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, String> {
     let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
     let directory =
@@ -44,6 +59,44 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
     ]
     .iter()
     .all(|path| path.is_file());
+    let (
+        websocket_port,
+        websocket_runtime_instance_id,
+        websocket_authenticated,
+        websocket_connection,
+        websocket_diagnostics,
+    ) = state
+        .websocket_server
+        .as_ref()
+        .map(|server| {
+            (
+                Some(server.port()),
+                Some(server.runtime_instance_id().to_owned()),
+                server.session.authenticated(),
+                server.session.browser_connection().to_owned(),
+                server.session.diagnostic_snapshot(),
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                None,
+                None,
+                false,
+                "not_started".to_owned(),
+                crate::websocket_transport::WebSocketDiagnosticSnapshot {
+                    accepted: 0,
+                    handshake_failed: 0,
+                    auth_read_failed: 0,
+                    auth_received: 0,
+                    auth_succeeded: 0,
+                    auth_failed: 0,
+                    auth_response_failed: 0,
+                    close_before_auth: 0,
+                    close_after_auth: 0,
+                    last_request_age_seconds: None,
+                },
+            )
+        });
     #[cfg(windows)]
     let (browser_connection, native_host, message) = {
         let host_executable = paths
@@ -51,11 +104,16 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
             .join("native-host")
             .join("xarchive-native-host.exe");
         let host_registered = crate::windows_transport::native_host_registered(&paths.root)?;
-        let browser_connection = state
+        let named_pipe_connection = state
             .transport_server
             .as_ref()
             .map(|server| server.session.browser_connection().to_owned())
             .unwrap_or_else(|| "error".to_owned());
+        let browser_connection = combine_browser_connection(
+            &named_pipe_connection,
+            &websocket_connection,
+            websocket_authenticated,
+        );
         let native_host = if !host_executable.is_file() {
             "missing"
         } else if host_registered {
@@ -103,44 +161,6 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
             "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
         },
     );
-    let (
-        websocket_port,
-        websocket_runtime_instance_id,
-        websocket_authenticated,
-        websocket_connection,
-        websocket_diagnostics,
-    ) = state
-        .websocket_server
-        .as_ref()
-        .map(|server| {
-            (
-                Some(server.port()),
-                Some(server.runtime_instance_id().to_owned()),
-                server.session.authenticated(),
-                server.session.browser_connection().to_owned(),
-                server.session.diagnostic_snapshot(),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                None,
-                None,
-                false,
-                "not_started".to_owned(),
-                crate::websocket_transport::WebSocketDiagnosticSnapshot {
-                    accepted: 0,
-                    handshake_failed: 0,
-                    auth_read_failed: 0,
-                    auth_received: 0,
-                    auth_succeeded: 0,
-                    auth_failed: 0,
-                    auth_response_failed: 0,
-                    close_before_auth: 0,
-                    close_after_auth: 0,
-                    last_request_age_seconds: None,
-                },
-            )
-        });
     Ok(ExtensionStatus {
         files_ready,
         directory: directory.display().to_string(),
@@ -342,4 +362,37 @@ pub(crate) fn open_extension_folder(state: State<'_, Mutex<RuntimeState>>) -> Re
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to open extension folder: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::combine_browser_connection;
+
+    #[test]
+    fn combine_browser_connection_promotes_authenticated_websocket() {
+        assert_eq!(
+            combine_browser_connection("not_loaded", "connected", true),
+            "connected"
+        );
+        assert_eq!(
+            combine_browser_connection("disconnected", "connected", true),
+            "connected"
+        );
+        assert_eq!(
+            combine_browser_connection("error", "not_loaded", true),
+            "connected"
+        );
+        assert_eq!(
+            combine_browser_connection("connected", "not_started", false),
+            "connected"
+        );
+        assert_eq!(
+            combine_browser_connection("not_loaded", "disconnected", false),
+            "disconnected"
+        );
+        assert_eq!(
+            combine_browser_connection("not_loaded", "not_loaded", false),
+            "not_loaded"
+        );
+    }
 }
