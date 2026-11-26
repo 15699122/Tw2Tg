@@ -36,7 +36,7 @@ test("settings render with the system proxy summary and editable diagnosis URL",
       }));
       export const configHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, {
         isWindows: true, errors: {}, expandedSections: {transfer: true},
-        useAria2: true, aria2: {found: false},
+        aria2: {found: false},
       }));
       export const jobsHtml = renderToStaticMarkup(React.createElement(DownloadJobsPage, {}));
       export const storageHtml = renderToStaticMarkup(React.createElement(StoragePage, {}));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
@@ -66,7 +66,7 @@ test("settings render with the system proxy summary and editable diagnosis URL",
   assert.match(mod.exports.html, /settings-fields proxy-diagnose-fields/);
   // Download mode and aria2 no longer live on the settings page.
   assert.doesNotMatch(mod.exports.html, /使用 aria2 传输媒体/);
-  assert.match(mod.exports.configHtml, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.configHtml, /aria2<\/code> 传输/);
   assert.match(mod.exports.configHtml, /下载配置/);
   // 拆分后的三个页面各自可渲染，且不互相携带对方的控件。
   assert.match(mod.exports.jobsHtml, /任务记录/);
@@ -83,7 +83,7 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
       import DownloadConfigPage from './src/pages/download-config-page.jsx';
       const props = {
         errors: {}, expandedSections: {transfer: true, aria2: true},
-        useAria2: false, aria2: {found: false},
+        aria2: {found: false},
         outputSettings: {naming_mode: 'template', filename_template: '{username}_{tweet_id}', export_json: false, export_yaml: true},
         setOutputSettings: () => {}, saveOutputSettings: () => {},
       };
@@ -94,7 +94,8 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
   assert.match(mod.exports.windowsHtml, /下载并安装/);
-  assert.match(mod.exports.windowsHtml, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.windowsHtml, /aria2<\/code> 传输/);
+  assert.doesNotMatch(mod.exports.windowsHtml, /使用 aria2 传输媒体/);
   // aria2 install management is now conditionally rendered only on Windows;
   // a non-Windows build simply omits the Aria2Settings block instead of
   // printing an explicit "not available" notice.

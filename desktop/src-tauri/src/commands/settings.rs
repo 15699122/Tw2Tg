@@ -721,26 +721,27 @@ pub(crate) fn set_use_aria2(
     state: State<'_, Mutex<RuntimeState>>,
     use_aria2: bool,
 ) -> Result<AppStatus, String> {
+    if !use_aria2 {
+        return Err(
+            "aria2-only media transfer is enforced; gallery-dl direct download has been retired"
+                .to_owned(),
+        );
+    }
     let mut state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let changed = state.config.download.use_aria2 != use_aria2;
+    let changed = !state.config.download.use_aria2;
     let mut candidate = state.config.clone();
-    candidate.download.use_aria2 = use_aria2;
+    candidate.download.use_aria2 = true;
     let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
     if !changed {
-        // An unchanged toggle still persists, so a caller can repair a file that
-        // drifted from the runtime value without rebuilding the executor.
         candidate.save(&paths)?;
         state.config = candidate;
         return Ok(app_status(&state));
     }
     let previous = state.config.clone();
     apply_transfer_choice(&mut state, candidate, &previous, &paths)?;
-    state.debug(
-        "download",
-        &format!("use_aria2={use_aria2} transfer backend updated"),
-    );
+    state.debug("download", "use_aria2=true transfer backend updated");
     Ok(app_status(&state))
 }
 
@@ -1021,7 +1022,7 @@ mod transfer_choice_tests {
             .expect("persist initial configuration");
         let previous_bytes = std::fs::read(&paths.config_file).expect("config bytes");
         let previous = state.config.clone();
-        assert!(!previous.download.use_aria2);
+        assert!(previous.download.use_aria2);
 
         state
             .database
@@ -1031,15 +1032,15 @@ mod transfer_choice_tests {
             .expect("store malformed transport settings");
 
         let mut candidate = previous.clone();
-        candidate.download.use_aria2 = true;
+        candidate.download.directory = root.join("other-archive").display().to_string();
         let error = apply_transfer_choice(&mut state, candidate, &previous, &paths)
             .expect_err("the replacement must fail");
         assert!(
             error.contains("invalid persisted downloader settings"),
             "unexpected error: {error}"
         );
-        assert!(
-            !state.config.download.use_aria2,
+        assert_eq!(
+            state.config.download.directory, previous.download.directory,
             "a failed replacement must not be reported as the effective choice"
         );
         assert_eq!(

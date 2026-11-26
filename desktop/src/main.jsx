@@ -75,7 +75,6 @@ function App() {
   const [acceptBusy, setAcceptBusy] = useState(false);
   const [previewMessage, setPreviewMessage] = useState("");
   const [acceptMessage, setAcceptMessage] = useState("");
-  const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
   const [proxySettings, setProxySettings] = useState(null); const [proxyMode, setProxyMode] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
   useEffect(() => {
@@ -140,7 +139,7 @@ function App() {
   };
 
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
-  const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); setUseAria2(Boolean(next.use_aria2)); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
+  const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
   const refreshDownloadPage = (offset = downloadsPage * 20) => { setDownloadPageLoading(true); setDownloadPageError(""); return invoke("list_jobs_page", { request: { offset, limit: 20 } }).then((result) => { setDownloadPageData(result); return result; }).catch((reason) => { setDownloadPageError(`下载任务加载失败：${String(reason)}`); return null; }).finally(() => setDownloadPageLoading(false)); };
   const openDownloadJob = (jobId, summaryIndex = -1) => {
@@ -207,8 +206,6 @@ function App() {
   const saveAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请选择 aria2c 可执行文件。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("save_aria2_path", { path: value }).then((result) => { setAria2(result); setAria2CustomPath(result.path || value); setAria2PathMessage("aria2 路径已保存。"); }).catch((reason) => setAria2PathMessage(`保存失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
   const chooseGalleryDl = () => open({ multiple: false, directory: false, filters: [{ name: "Executable", extensions: ["exe", "py"] }] }).then((path) => { if (typeof path !== "string") return; setGalleryDlPath(path); setGalleryDlBusy(true); setGalleryDlMessage(""); invoke("save_gallery_dl_path", { path }).then((result) => { const savedPath = result.path || path; setGalleryDlPath(savedPath); setSidecarPath(savedPath); setGalleryDlMessage(`已检测到 gallery-dl v${result.version || "未知"}，路径已保存。`); }).catch((reason) => { setGalleryDlPath(""); setSidecarPath(""); setGalleryDlMessage(`校验失败，请重新选择：${String(reason)}`); }).finally(() => setGalleryDlBusy(false)); });
   const chooseAria2 = () => chooseExecutable(setAria2CustomPath, setAria2PathMessage, ["exe"]);
-  // 切换传输后端：关闭时 gallery-dl 直接下载媒体，aria2 不再启动。
-  const saveUseAria2 = (enabled) => { setUseAria2Busy(true); setUseAria2Message(""); invoke("set_use_aria2", { useAria2: enabled }).then((next) => { setStatus(next); setUseAria2(Boolean(next.use_aria2)); setUseAria2Message(enabled ? "已启用 aria2 传输；传输已重建，Extension 状态已刷新。" : "已切换为 gallery-dl 直接下载，aria2 不再启动；传输已重建，Extension 状态已刷新。"); void refreshExtension(); }).catch((reason) => { setUseAria2Message(`保存失败：${String(reason)}`); setUseAria2(Boolean(status.use_aria2)); }).finally(() => setUseAria2Busy(false)); };
   const openFolder = (command, key, label) => { setFolderBusy(true); clearError(key); invoke(command).catch((reason) => setError(key, label, reason)).finally(() => setFolderBusy(false)); };
   const chooseArchiveDirectory = async () => { setArchiveBusy(true); setArchiveMessage(""); try { const path = await open({ multiple: false, directory: true }); if (typeof path !== "string") return; const next = await invoke("set_archive_directory", { directory: path }); setStatus(next); setArchiveMessage(`归档目录已更新为 ${next.archive_root}。已有文件未移动。`); } catch (reason) { setArchiveMessage(`归档目录更新失败：${String(reason)}`); } finally { setArchiveBusy(false); } };
   const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
@@ -260,7 +257,6 @@ function App() {
               extension={extension}
               bootstrap={bootstrap}
               aria2={aria2}
-              useAria2={useAria2}
               completeSetup={completeSetup}
               setPage={setPage}
               openSettingsSection={openSettingsSection}
@@ -290,10 +286,6 @@ function App() {
           ) : page === "download-config" ? (
             <DownloadConfigPage
               isWindows={isWindows}
-              useAria2={useAria2}
-              useAria2Busy={useAria2Busy}
-              useAria2Message={useAria2Message}
-              saveUseAria2={saveUseAria2}
               aria2={aria2}
               aria2Busy={aria2Busy}
               aria2CustomPath={aria2CustomPath}

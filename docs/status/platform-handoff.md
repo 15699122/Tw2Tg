@@ -1,36 +1,44 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-26, post-`v0.2.1-pre2` Phase 0.1 + Phase 1.1/1.2 on `dev`)
+## Resume summary — authoritative cursor (2026-11-26, Phase 2.1 `aria2-only` convergence + security triage on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner (**`READY_FOR_WINDOWS`** for non-blocking `Core Bootstrap` `.dependency-missing` & Windows release/signing queue; `WINDOWS_BLOCKING`: none).
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
 - Branch: **`dev`**.
-- Source baseline: **`96d18e0ff574ad2e978ee13d5bef862357013cb7`** (`96d18e0f`, after merging `security/dependency-advisories-2026-11-25` into `dev` and deleting the merged branch).
+- Source baseline: **`fda4b7ff`** (`ComponentManager::from_root` package catalog loader) + this Phase 2.1 batch.
 - Completed Cross-platform batch on `dev`:
-  1. **Phase 0.1 (Security branch merge)**: Fast-forward merged `security/dependency-advisories-2026-11-25` (`96d18e0f`, `undici` `7.29.1 -> 7.30.2` / `6.28.1 -> 6.29.1`) into `dev` and deleted the merged branch locally and on `origin`.
-  2. **Phase 1.2 (Hosted Windows CI WDIO diagnostic)**: Inspected `windows-release.yml` Run `45615148610` job `139219489403` (`Independent Windows WDIO (non-blocking for release)`). Confirmed `preflight = 'success'` and `msedgedriver` listened on port `4445`, then failed after 3m02s with `WebDriverError: session not created: DevToolsActivePort file doesn't exist` — a known hosted `windows-latest` non-interactive runner limitation, not a product defect (physical Windows WebView2 R1–R7 & M1–M3 all passed).
-  3. **Phase 1.1 (Package catalog wiring)**: Added `ComponentManager::from_root` in [`desktop/src-tauri/src/components.rs`](../../desktop/src-tauri/src/components.rs) and wired `get_component_bootstrap_status` in [`desktop/src-tauri/src/commands/app.rs`](../../desktop/src-tauri/src/commands/app.rs) to load a shipped `<portable_root>/components/catalog.json` when present (failing closed on invalid/unreadable JSON or schema mismatch) and fall back to `embedded_catalog()` (`2026-09-20-u9`) only when absent. Resealed [`scripts/architecture-baseline.json`](../../scripts/architecture-baseline.json).
+  1. **Security triage closure**: Dismissed unpatchable Dependabot alerts `#1` (`glib`), `#4` / `#6` (`extract-zip`), and `#38` (`basic-ftp`) on GitHub as `tolerable_risk` per user confirmation and recorded the disposition in [`docs/development/security-remediation-plan.md`](../development/security-remediation-plan.md). Kept `dev -> main` merge deferred until `v0.2.1` GA.
+  2. **Phase 2.1 (`aria2-only` media transfer convergence)**:
+     - [`desktop/src-tauri/src/config.rs`](../../desktop/src-tauri/src/config.rs): `DownloadConfig::default()` now defaults `use_aria2: true` while keeping the `use_aria2` field deserializable so legacy `config.json` / configuration exchange files with `use_aria2: false` continue loading cleanly.
+     - [`desktop/src-tauri/src/production.rs`](../../desktop/src-tauri/src/production.rs), [`result_mapping.rs`](../../desktop/src-tauri/src/production/result_mapping.rs), [`sidecar_operations.rs`](../../desktop/src-tauri/src/production/sidecar_operations.rs): production builds (`#[cfg(not(test))]`) remove the `gallery-dl` direct-download branch and unconditionally run `gallery-dl` extraction-only → `aria2` transfer → Rust staging verification (legacy `execute_gallery_dl_archive` / `download_v2` retained under `#[cfg(test)]` only for existing test fixtures).
+     - [`desktop/src-tauri/src/runtime.rs`](../../desktop/src-tauri/src/runtime.rs), [`startup.rs`](../../desktop/src-tauri/src/executor/runtime/startup.rs), [`commands/app.rs`](../../desktop/src-tauri/src/commands/app.rs), [`commands/settings.rs`](../../desktop/src-tauri/src/commands/settings.rs): `RuntimeState`, `ExecutorConfig::from_env`, and `app_status` enforce `use_aria2 = true`; `set_use_aria2(false)` fails closed.
+     - [`desktop/src/pages/download-config-page.jsx`](../../desktop/src/pages/download-config-page.jsx), [`dashboard-page.jsx`](../../desktop/src/pages/dashboard-page.jsx), [`main.jsx`](../../desktop/src/main.jsx): removed the dual-backend switch (`useAria2` toggle), updated `#transfer-backend-settings` to the `aria2-only` pipeline description, and updated Dashboard status chips (`下载方式: aria2`, `aria2: 已检测到/未检测到`).
+     - Updated [`desktop/test/ui-wiring.test.mjs`](../../desktop/test/ui-wiring.test.mjs), [`desktop/test/settings-render.test.mjs`](../../desktop/test/settings-render.test.mjs), [`config/tests/telegram.rs`](../../desktop/src-tauri/src/config/tests/telegram.rs), [`config/tests/exchange.rs`](../../desktop/src-tauri/src/config/tests/exchange.rs), [`commands/settings.rs`](../../desktop/src-tauri/src/commands/settings.rs), and resealed [`scripts/architecture-baseline.json`](../../scripts/architecture-baseline.json).
+  3. **Phase 2.2 (`Production V2` / `InternalRenameV2`)**: deferred / remains fail-closed (`startup.rs` lacks a native Windows `recover_v2_on_runner` adapter, and current Linux container environment `/non-systemd` has no delegated cgroup v2 for delegated V2 gates).
 - Linux validation gates passed on `dev`:
   - `cargo fmt --all -- --check`: **PASS**
-  - `cargo test -p xarchive-desktop --lib components --offline`: **PASS** (`7 passed`, including `from_root_prefers_package_catalog_and_fails_closed`)
-  - `cargo clippy -p xarchive-desktop --all-targets --offline -- -D warnings`: **PASS**
-  - `cargo test -p xarchive-desktop --offline`: **PASS** (`376 passed, 0 failed, 15 ignored`)
+  - `cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe --offline`: **PASS**
+  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (0 failed across all workspace crates & doctests; delegated cgroup tests remain `ignored`)
+  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
   - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
   - `npm --prefix desktop run build`: **PASS**
+  - `npm --prefix extension test`: **PASS** (`57 pass, 0 fail`)
   - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
   - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
-- Remaining non-blocking queue items (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  - `Core Bootstrap` missing-catalog `.dependency-missing`: **READY_TO_RUN on Windows** — now unblocked by `ComponentManager::from_root` by placing a fixture `components/catalog.json` inside an isolated `XARCHIVE_PORTABLE_ROOT`.
-  - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
+  - `python3 -m pytest sidecar/tests`: **NOT_RUN** (`pytest` not installed in `/usr/bin/python3`; `sidecar/` unchanged)
+- Windows Platform Owner queue (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  1. Verify Phase 2.1 `aria2-only` UI (`DashboardPage` `下载方式: aria2` + `DownloadConfigPage` `#transfer-backend-settings` without toggle) and real Windows `aria2c.exe` end-to-end download; note that legacy `desktop/e2e/specs/transfer-switch-*.e2e.mjs` / `transfer-save-failure.e2e.mjs` target the retired `use_aria2` toggle.
+  2. Verify `Core Bootstrap` missing-catalog `.dependency-missing` (`ComponentManager::from_root` from `fda4b7ff`) with a fixture `components/catalog.json` inside an isolated `XARCHIVE_PORTABLE_ROOT`.
+  3. Remaining non-blocking release/pipeline items: real external X/Telegram/Extension end-to-end checks and Windows CI/Authenticode signing as applicable.
 - `WINDOWS_BLOCKING`: **none**.
 
 ---
 
-## Previous Cursor — 2026-11-25, Windows M1–M3 verification at `a5a2dd0d`
+## Previous Cursor — 2026-11-26, post-`v0.2.1-pre2` Phase 0.1 + Phase 1.1/1.2 on `dev`
 
 ### Cursor
 

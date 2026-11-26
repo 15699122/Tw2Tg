@@ -744,7 +744,7 @@
     "desktop/src-tauri/src/commands/app.rs": {
       "category": "rust-desktop",
       "lines": 140,
-      "sha256": "340d18cc29e38d78161288015c5b7e0ac9f82bfa20cb7f7fca88bdbd576f5346"
+      "sha256": "66095b8dc916a5b2d30636d62eae86defa90219a4c1b92528747660b042249aa"
     },
     "desktop/src-tauri/src/commands/archive.rs": {
       "category": "rust-desktop",
@@ -798,8 +798,8 @@
     },
     "desktop/src-tauri/src/commands/settings.rs": {
       "category": "rust-desktop",
-      "lines": 1053,
-      "sha256": "6079854c1b143be9c046959964949e9a75995dd6c3212eaaa02fe694863e0ab9"
+      "lines": 1054,
+      "sha256": "086cb06679a0192a0722358b7bdc76ea07b5ab61346582db062a3183d4a1f8a7"
     },
     "desktop/src-tauri/src/commands/sidecar.rs": {
       "category": "rust-desktop",
@@ -818,13 +818,13 @@
     },
     "desktop/src-tauri/src/config.rs": {
       "category": "rust-desktop",
-      "lines": 1132,
-      "sha256": "9e44d21cd78996763370af20c6cd42b6b737c4865d10d8810afcbc86f83bc41e"
+      "lines": 1136,
+      "sha256": "ee5d8374b8a0d39591ebf2d071acbdbe3e0d683179cf3bd53b2d56f329be4c90"
     },
     "desktop/src-tauri/src/config/tests/exchange.rs": {
       "category": "rust-desktop",
-      "lines": 183,
-      "sha256": "0815ece196cb16e61726426b5a58786095a0861a09ebd1e535e1e7fc8e4b8365"
+      "lines": 184,
+      "sha256": "85eadf8aa0e4be7283ded5691a4dfe5f0e2ab6c7be31af6434d2392902f8ae9b"
     },
     "desktop/src-tauri/src/config/tests/logging.rs": {
       "category": "rust-desktop",
@@ -843,8 +843,8 @@
     },
     "desktop/src-tauri/src/config/tests/telegram.rs": {
       "category": "rust-desktop",
-      "lines": 239,
-      "sha256": "fea097d141eab3ce5e4ac39497c6deea2755e34c392163e4fc544118190b5c17"
+      "lines": 237,
+      "sha256": "ad5535bc4fe83e4e8bc643453ced3c66056c17f6e06ad56740180ec5edf559c6"
     },
     "desktop/src-tauri/src/execution_spec.rs": {
       "category": "rust-desktop",
@@ -889,7 +889,7 @@
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
       "lines": 1135,
-      "sha256": "23d93b6d8eb0a50db634da29efc3b309a6e310a223d5dae5f1af7c4da8baf064"
+      "sha256": "ee7ad9b877f039d59ae8d2e43fff2a0beb5bc3d98c0609c98121e9c513909b55"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",
@@ -983,8 +983,8 @@
     },
     "desktop/src-tauri/src/production.rs": {
       "category": "rust-desktop",
-      "lines": 620,
-      "sha256": "6e0491e14479d4a2d339d2340fa33cd9703d35ed036f96bc47d658586268b592"
+      "lines": 626,
+      "sha256": "fe8b1b3cf6b8d4635647654fcac46f0a28ab6c64536c6aafcfcb8405755e2e24"
     },
     "desktop/src-tauri/src/production/discovery.rs": {
       "category": "rust-desktop",
@@ -993,13 +993,13 @@
     },
     "desktop/src-tauri/src/production/result_mapping.rs": {
       "category": "rust-desktop",
-      "lines": 53,
-      "sha256": "3c3b1d431c16fed6aa8b13473fd668639c206a2369e5b99f284516180e9d69b3"
+      "lines": 56,
+      "sha256": "0a9f785010646e7060d20fb8900059f145c1596199a402a7b1b2895a4980af1a"
     },
     "desktop/src-tauri/src/production/sidecar_operations.rs": {
       "category": "rust-desktop",
-      "lines": 295,
-      "sha256": "86a53cbe4f908a4f307462d468998e09b78d6ca5f11ba865661ac2ba8042648e"
+      "lines": 296,
+      "sha256": "ef109bd76e695e8c951ea19e1b4612669a0eff8491a4eef2583a3adbfd52cc34"
     },
     "desktop/src-tauri/src/production/tool_compatibility.rs": {
       "category": "rust-desktop",
@@ -1043,8 +1043,8 @@
     },
     "desktop/src-tauri/src/runtime.rs": {
       "category": "rust-desktop",
-      "lines": 922,
-      "sha256": "c0ec6d95a617256190ef60ba3a8aa31d144cd6a50aa44911b093435ce7fa9762"
+      "lines": 913,
+      "sha256": "16ee859acb77ff002f8dfc67f451a904b71d89b6c5ea2c2386ff08119d8a21f3"
     },
     "desktop/src-tauri/src/runtime/tests/executor_transport.rs": {
       "category": "rust-desktop",
@@ -1258,8 +1258,8 @@
     },
     "desktop/src/main.jsx": {
       "category": "frontend-source",
-      "lines": 456,
-      "sha256": "09ee73f38e5240541f82054a4fbe0c83958a933f9892967f6601731dcf6ed392"
+      "lines": 448,
+      "sha256": "3cefd4107087b7c836c62396e4aba16b5030df98fe2a3c665ed94eed3fa15394"
     },
     "desktop/src/pages/batches-page.jsx": {
       "category": "frontend-source",
@@ -1269,12 +1269,12 @@
     "desktop/src/pages/dashboard-page.jsx": {
       "category": "frontend-source",
       "lines": 8,
-      "sha256": "5dece162acef8ab47e79a488df8dbb29fa0b3cc6376771bb4be6124f9b973ce5"
+      "sha256": "1dee5c82c1e025ca7c7b9cad630e6537eb073474d53d304eb9d8aa886a5384c6"
     },
     "desktop/src/pages/download-config-page.jsx": {
       "category": "frontend-source",
       "lines": 85,
-      "sha256": "b29eedab08b415dba30abce68423a174a5ec46936d103420ac1c1078714fc2d6"
+      "sha256": "ab57b9b3c5438439551a1446f8133aeaa773b8fa531ef36847273e3763aa26f3"
     },
     "desktop/src/pages/download-jobs-page.jsx": {
       "category": "frontend-source",

@@ -108,7 +108,7 @@ pub(crate) fn app_status(state: &RuntimeState) -> AppStatus {
         logs_root: state.logs_root.display().to_string(),
         logging_level: state.config.logging.effective_level().as_str().to_owned(),
         max_log_files: state.config.logging.max_files,
-        use_aria2: state.config.download.use_aria2,
+        use_aria2: true,
     }
 }
 

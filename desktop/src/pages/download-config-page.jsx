@@ -7,10 +7,10 @@ import { Badge } from "../components/ui/badge";
 import { aria2StatusText } from "../lib/ui-state.js";
 import { PageHeader, Alert, PathDisplay, statusMessageClass } from "./shared.jsx";
 
-/// 下载配置页：媒体传输方式（gallery-dl / aria2）与 aria2 下载引擎管理。
+/// 下载配置页：aria2-only 媒体传输说明与 aria2 下载引擎管理。
 /// 归档存储位置已拆分到「存储」页，任务记录在「任务记录」页。
 export default function DownloadConfigPage({
-  isWindows, useAria2, useAria2Busy, useAria2Message, saveUseAria2,
+  isWindows,
   aria2, aria2Busy, aria2CustomPath = "", aria2PathBusy, aria2PathMessage,
   refreshAria2, downloadAria2, checkAria2Path, saveAria2Path, chooseAria2,
   errors = {}, copyPath = () => {}, copied = "", expandedSections = {}, toggleSettingsSection = () => {},
@@ -66,8 +66,8 @@ export default function DownloadConfigPage({
     <section id="download-settings" className="download-settings-section" aria-labelledby="download-settings-title">
       <h2 id="download-settings-title" className="download-section-heading">下载设置</h2>
       <div className="settings-layout">
-        <SettingsSection id="transfer-backend-settings" title="下载方式" description="选择由 gallery-dl 直接下载，还是由 aria2 传输。" icon="activity" expanded={expandedSections.transfer ?? false} onToggle={() => toggleSettingsSection("transfer")}>
-          <div className="settings-section-content"><p className="settings-help">关闭时由 gallery-dl 下载媒体；开启时使用 aria2 传输。切换会重建下载执行器及连接配置，可能中断正在运行的任务；请先等待活动任务结束。</p><Toggle className="settings-field" restoreFocusAfterBusy checked={useAria2} disabled={useAria2Busy} onCheckedChange={saveUseAria2}>使用 aria2 传输媒体</Toggle>{useAria2Message && <p className={statusMessageClass(useAria2Message)} role="status">{useAria2Message}</p>}</div>
+        <SettingsSection id="transfer-backend-settings" title="下载方式" description="统一使用 gallery-dl 提取媒体元数据并由 aria2 传输媒体文件。" icon="activity" expanded={expandedSections.transfer ?? false} onToggle={() => toggleSettingsSection("transfer")}>
+          <div className="settings-section-content"><p className="settings-help">当前媒体传输链路已收敛为 <code>gallery-dl</code> extraction-only → <code>aria2</code> 传输 → Rust staging 校验。请确保下方 <code>aria2</code> 可执行文件已就绪。</p></div>
         </SettingsSection>
         {isWindows && <Aria2Settings installation={aria2} busy={aria2Busy} pathBusy={aria2PathBusy} error={errors.aria2} customPath={aria2CustomPath} pathMessage={aria2PathMessage} copied={copied} copyPath={copyPath} onRefresh={refreshAria2} onDownload={downloadAria2} onCheck={checkAria2Path} onSavePath={saveAria2Path} onChoose={chooseAria2} expanded={expandedSections.aria2 ?? false} onToggle={() => toggleSettingsSection("aria2")} />}
       </div>

@@ -518,7 +518,7 @@ test("the split pages are selected by navigation and forward their own controls"
     assert.match(mainSource, new RegExp(`<DownloadJobsPage[\\s\\S]*?${prop}=`), `${prop} is wired to DownloadJobsPage`);
   }
   for (const prop of [
-    "isWindows", "useAria2", "useAria2Busy", "useAria2Message", "saveUseAria2",
+    "isWindows",
     "aria2", "aria2Busy", "aria2CustomPath", "aria2PathBusy", "aria2PathMessage",
     "refreshAria2", "downloadAria2", "checkAria2Path", "saveAria2Path", "chooseAria2",
     "errors", "copyPath", "copied", "expandedSections", "toggleSettingsSection",
@@ -528,7 +528,7 @@ test("the split pages are selected by navigation and forward their own controls"
   for (const prop of ["archiveRoot", "archiveBusy", "chooseArchiveDirectory", "archiveError", "copyPath", "copied", "expandedSections", "toggleSettingsSection"]) {
     assert.match(mainSource, new RegExp(`<StoragePage[\\s\\S]*?${prop}=`), `${prop} is wired to StoragePage`);
   }
-  assert.match(configSource, /checked=\{useAria2\} disabled=\{useAria2Busy\} onCheckedChange=\{saveUseAria2\}/);
+  assert.doesNotMatch(configSource, /saveUseAria2/);
   assert.match(jobsSource, /title="任务记录"/);
   assert.match(configSource, /title="下载配置"/);
   assert.match(storageSource, /title="存储"/);
@@ -539,7 +539,7 @@ test("the split pages are selected by navigation and forward their own controls"
   assert.match(configSource, /新任务和新批次使用版本化 JSON\/YAML 输出快照/);
   assert.match(jobsSource, /任务记录/);
   assert.match(configSource, /下载设置/);
-  assert.match(configSource, /等待活动任务结束/);
+  assert.match(configSource, /aria2<\/code> 传输/);
   assert.match(jobsSource, /aria-labelledby="download-task-history-title"/);
   assert.match(configSource, /aria-labelledby="download-settings-title"/);
 });
@@ -733,13 +733,12 @@ test("the icon generator extraction survives a CRLF checkout", () => {
   assert.match(captured, /resize\(\(size, size\), Image\.LANCZOS\)/);
 });
 
-test("saving proxy or transfer backend refreshes the Extension snapshot", () => {
-  // `save_network_settings` / `set_use_aria2` rebuild the executor and the
+test("saving proxy refreshes the Extension snapshot", () => {
+  // `save_network_settings` rebuilds the executor and the
   // transport (possibly on a new WebSocket port). Without a refresh the panel
   // keeps showing the pre-save port while the sidebar already moved on — the
   // exact disagreement in windows-full-2b98952-feedback.md.
   assert.match(mainSource, /save_network_settings[\s\S]*?void refreshExtension\(\)/);
-  assert.match(mainSource, /set_use_aria2[\s\S]*?void refreshExtension\(\)/);
 });
 
 // --- 2026-11-22 UI consistency and polish (CROSS_PLATFORM_CHANGE_REQUIRED) ---
@@ -870,7 +869,6 @@ test("status messages classify failures instead of always rendering green", asyn
   assert.match(configSource, /outputSettingsMessage && <p className=\{statusMessageClass\(outputSettingsMessage\)\}/);
   assert.match(configSource, /downloaderSettingsMessage && <p className=\{statusMessageClass\(downloaderSettingsMessage\)\}/);
   assert.match(configSource, /exchangeMessage && <p className=\{statusMessageClass\(exchangeMessage\)\}/);
-  assert.match(configSource, /useAria2Message && <p className=\{statusMessageClass\(useAria2Message\)\}/);
 });
 
 test("download config groups its panels and keeps action rows left-aligned", () => {

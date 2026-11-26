@@ -392,20 +392,15 @@ impl RuntimeState {
                 aria2_json: "[]".to_owned(),
             },
         };
-        let has_selected_arguments = if self.config.download.use_aria2 {
+        let has_selected_arguments =
             !serde_json::from_str::<Vec<String>>(&downloader_settings.aria2_json)
                 .map_err(|_| "aria2 arguments must be a JSON string array")?
-                .is_empty()
-        } else {
-            !serde_json::from_str::<Vec<String>>(&downloader_settings.gallery_dl_json)
-                .map_err(|_| "gallery-dl arguments must be a JSON string array")?
-                .is_empty()
-        };
+                .is_empty();
         let tool_compatibility = if has_selected_arguments {
             Some(resolve_browser_tool_compatibility(
                 self.executor.aria2_program(),
                 self.executor.gallery_dl_program(),
-                self.config.download.use_aria2,
+                true,
             )?)
         } else {
             None
@@ -415,7 +410,7 @@ impl RuntimeState {
             self.executor.service(),
             self.executor.database_path().to_owned(),
             output_settings.clone(),
-            self.config.download.use_aria2,
+            true,
             tool_compatibility.clone().unwrap_or_default(),
         ) {
             Ok(server) => self.websocket_server = Some(server),
@@ -433,7 +428,7 @@ impl RuntimeState {
                         .as_ref()
                         .map(|server| server.pairing()),
                     output_settings.clone(),
-                    self.config.download.use_aria2,
+                    true,
                     tool_compatibility.clone().unwrap_or_default(),
                 )?,
             );
@@ -451,7 +446,7 @@ impl RuntimeState {
                         .as_ref()
                         .map(|server| server.pairing()),
                     output_settings,
-                    self.config.download.use_aria2,
+                    true,
                     tool_compatibility.unwrap_or_default(),
                 )?,
             );
@@ -789,20 +784,16 @@ pub(crate) fn executor_config(
         }),
         gallery_dl_program: Some(resolved_gallery_dl_program(root, config)),
         sidecar_args: sidecar_runtime_args(root, config),
-        aria2_program: if config.download.use_aria2 {
-            Some(
-                std::env::var("XARCHIVE_ARIA2_PROGRAM")
-                    .ok()
-                    .unwrap_or_else(|| {
-                        crate::portable::resolve_config_path(root, &config.sidecar.aria2)
-                            .display()
-                            .to_string()
-                    }),
-            )
-        } else {
-            None
-        },
-        use_aria2: config.download.use_aria2,
+        aria2_program: Some(
+            std::env::var("XARCHIVE_ARIA2_PROGRAM")
+                .ok()
+                .unwrap_or_else(|| {
+                    crate::portable::resolve_config_path(root, &config.sidecar.aria2)
+                        .display()
+                        .to_string()
+                }),
+        ),
+        use_aria2: true,
         network: crate::executor::ExecutorNetworkConfig::from_seconds(
             config.network.transfer_timeout_seconds,
             config.network.telegram_timeout_seconds,

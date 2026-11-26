@@ -12,19 +12,22 @@
 //!   failing the archive, because the media facts, not this label, decide identity.
 
 use xarchive_protocol::ExtractionMediaType;
+#[cfg(test)]
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
+#[cfg(test)]
 use crate::archive::{SidecarArchiveResult, SidecarDownloadRequest};
+#[cfg(test)]
 use crate::executor::CancellationToken;
 
+#[cfg(test)]
 use super::sidecar_operations::{download_v2, verify_downloaded_files};
+#[cfg(test)]
 use super::transfer::extraction_to_metadata;
 
-/// Optional direct-download archive path (`use_aria2 = false`).
-///
-/// gallery-dl downloads the media into the job staging directory itself; this
-/// runner only validates the reported staging-relative files against disk and
-/// converts them into the durable commit contract. No aria2 process starts.
+/// Test-only direct-download archive fixture path (`use_aria2 = false`).
+/// Production builds converge to `aria2-only` and do not compile this path.
+#[cfg(test)]
 pub(super) fn execute_gallery_dl_archive(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,

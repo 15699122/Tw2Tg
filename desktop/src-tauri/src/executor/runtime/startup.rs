@@ -64,7 +64,7 @@ impl ExecutorRuntime {
                 .and_then(|raw| serde_json::from_str(&raw).ok())
                 .unwrap_or_default(),
             aria2_program: std::env::var("XARCHIVE_ARIA2_PROGRAM").ok(),
-            use_aria2: false,
+            use_aria2: true,
             network: ExecutorNetworkConfig::default(),
         };
         Self::with_config(config)

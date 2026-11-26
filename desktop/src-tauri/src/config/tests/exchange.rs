@@ -155,7 +155,8 @@ fn cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds() {
 
 #[test]
 fn configuration_exchange_preview_preserves_missing_paths_and_binds_exact_bytes() {
-    let local = AppConfig::default();
+    let mut local = AppConfig::default();
+    local.download.use_aria2 = false;
     let document = ConfigurationExchange::parse(r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"archive_directory":"/definitely-missing-tw2tg-f2","use_aria2":true}}"#).unwrap();
     let preview = document
         .preview(&local, std::path::Path::new("/tmp"), Some(b"one\n"))

@@ -1,15 +1,13 @@
 use super::*;
 
 #[test]
-fn download_config_defaults_to_gallery_dl_direct_download() {
-    // A config written before this flag existed must load without it, and
-    // must not silently reintroduce the aria2 dependency.
+fn download_config_defaults_to_aria2_and_accepts_legacy_field() {
     let config: DownloadConfig = serde_json::from_str("{}").unwrap();
-    assert!(!config.use_aria2);
-    assert!(!DownloadConfig::default().use_aria2);
+    assert!(config.use_aria2);
+    assert!(DownloadConfig::default().use_aria2);
 
-    let enabled: DownloadConfig = serde_json::from_str(r#"{"use_aria2": true}"#).unwrap();
-    assert!(enabled.use_aria2);
+    let legacy: DownloadConfig = serde_json::from_str(r#"{"use_aria2": false}"#).unwrap();
+    assert!(!legacy.use_aria2);
 }
 
 #[test]

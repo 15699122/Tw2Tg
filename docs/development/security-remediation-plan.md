@@ -24,7 +24,9 @@
   - 依赖链：`undici@7.29.1`（`cheerio@1.2.0` ← `webdriverio@9.31.9` ← `@wdio/cli@9.31.9`）与 `undici@6.28.1`（`webdriver@9.31.9` / `webdriver@9.30.1` ← `@wdio/cli` / `@wdio/tauri-service@1.4.0`）。
   - 已通过 `npm update undici` 在仅修改 `package-lock.json` 的前提下升级至 `undici@7.30.2` 与 `undici@6.29.1`（共变更 3 个包，未改动 `package.json` 或业务源码）；该依赖仅用于开发/E2E 测试工具链，不进入 Desktop / Extension 发布产物。
 
-### 7.3 当前无法使用小补丁处理的告警（保留记录与风险边界）
+### 7.3 当前无法使用小补丁处理的告警（保留记录与风险边界，已按 `tolerable_risk` 关闭）
+
+经 2026-11-26 用户确认，以下 3 组不可小补丁处理的 Dependabot 告警已在 GitHub Security 页面标记为 `Dismiss (tolerable_risk)`，后续仍按 Phase 3 跟踪上游依赖演进：
 
 | 告警 | 包与当前版本 | 等级 / 作用域 | 上游修复边界 | 无法小补丁升级的原因与缓解边界 |
 |---|---|---|---|---|

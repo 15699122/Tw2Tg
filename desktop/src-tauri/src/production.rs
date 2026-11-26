@@ -37,10 +37,15 @@ mod transfer;
 // before the split keep that reach.
 #[allow(unused_imports)]
 pub(crate) use discovery::{DiscoveryOutcome, DiscoveryRequest, execute_v2_discovery};
+#[cfg(test)]
+use result_mapping::execute_gallery_dl_archive;
 #[allow(unused_imports)]
-use result_mapping::{execute_gallery_dl_archive, media_type_name};
+use result_mapping::media_type_name;
 #[allow(unused_imports)]
-use sidecar_operations::{download_v2, extract_v2, verify_downloaded_files};
+use sidecar_operations::extract_v2;
+#[cfg(test)]
+#[allow(unused_imports)]
+use sidecar_operations::verify_downloaded_files;
 #[allow(unused_imports)]
 pub(crate) use tool_compatibility::resolved_tool_version;
 #[allow(unused_imports)]
@@ -66,26 +71,27 @@ pub(crate) fn execute_v2_archive(
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
     #[cfg(windows)] containment: Option<&crate::executor::WindowsAttemptWriterDomain>,
 ) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
-    revalidate_tool_compatibility(request, aria2_program, use_aria2)
+    #[cfg(not(test))]
+    let _ = use_aria2;
+    #[cfg(test)]
+    if !use_aria2 {
+        revalidate_tool_compatibility(request, aria2_program, false)
+            .map_err(|message| (message, None))?;
+        return execute_gallery_dl_archive(supervisor, request, cancellation, network)
+            .map_err(|message| (message, None));
+    }
+
+    revalidate_tool_compatibility(request, aria2_program, true)
         .map_err(|message| (message, None))?;
-    if use_aria2 {
-        return execute_aria2_archive(
-            supervisor,
-            request,
-            cancellation,
-            aria2_program,
-            network,
-            #[cfg(any(target_os = "linux", windows))]
-            containment,
-        );
-    }
-    if aria2_program.is_some() {
-        eprintln!(
-            "warning: aria2 path is configured but optional downloads are off; aria2 will not start"
-        );
-    }
-    execute_gallery_dl_archive(supervisor, request, cancellation, network)
-        .map_err(|message| (message, None))
+    execute_aria2_archive(
+        supervisor,
+        request,
+        cancellation,
+        aria2_program,
+        network,
+        #[cfg(any(target_os = "linux", windows))]
+        containment,
+    )
 }
 
 #[cfg(test)]

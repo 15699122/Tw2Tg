@@ -12,6 +12,7 @@
 //! * a cancellation observed mid-stream ends the operation instead of leaving the
 //!   supervisor in an ambiguous state.
 
+#[cfg(test)]
 use std::path::{Component, Path};
 use std::time::Duration;
 
@@ -21,6 +22,7 @@ use xarchive_sidecar_supervisor::{SidecarSupervisor, SupervisorEvent};
 use crate::archive::SidecarDownloadRequest;
 use crate::executor::CancellationToken;
 
+#[cfg(test)]
 use super::media_type_name;
 
 pub(super) fn extract_v2(
@@ -121,10 +123,8 @@ pub(super) fn extract_v2(
     }
 }
 
-/// Run one v2 `download` command and wait for `download_completed`.
-///
-/// This is the optional direct-download path (`use_aria2 = false`): gallery-dl
-/// downloads the media itself, so no aria2 transfer plan is ever built.
+/// Test-only v2 `download` command helper for legacy test fixtures.
+#[cfg(test)]
 pub(super) fn download_v2(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
@@ -242,6 +242,7 @@ pub(super) fn download_v2(
 /// under staging, checked for regular-file shape, and compared against the
 /// size the worker claimed. A tweet whose extraction lists media but produced
 /// no file is rejected instead of being archived as metadata-only.
+#[cfg(test)]
 pub(super) fn verify_downloaded_files(
     download: &xarchive_protocol::DownloadResult,
     extraction: &ExtractionResult,

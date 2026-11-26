@@ -95,13 +95,17 @@ pub struct DownloadConfig {
     pub directory: String,
     #[serde(default)]
     pub initialized: bool,
-    /// Whether the desktop may use the configured aria2 executable.
+    /// Whether the desktop uses the converged aria2 transfer pipeline.
     ///
-    /// `false` is the historical and current default: gallery-dl performs
-    /// media byte downloads and aria2 is not started. `true` keeps the
-    /// legacy gallery-dl-extraction/aria2-transfer split.
-    #[serde(default)]
+    /// Production runtime is converged to `aria2-only` (`gallery-dl` extraction
+    /// followed by `aria2` transfer). The field remains deserializable so legacy
+    /// configuration files containing `use_aria2: false` continue to load.
+    #[serde(default = "default_use_aria2")]
     pub use_aria2: bool,
+}
+
+fn default_use_aria2() -> bool {
+    true
 }
 
 fn default_download_mode() -> String {
@@ -738,7 +742,7 @@ impl Default for DownloadConfig {
             mode: default_download_mode(),
             directory: default_download_path(),
             initialized: false,
-            use_aria2: false,
+            use_aria2: true,
         }
     }
 }
