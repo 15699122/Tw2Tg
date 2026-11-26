@@ -170,6 +170,20 @@ impl ComponentManager {
         Self::new(root, load_catalog_file(catalog_file)?)
     }
 
+    /// Manager that prefers a shipped `<root>/catalog.json` when present and
+    /// falls back to the embedded catalog only when the file does not exist.
+    /// An existing invalid or unreadable `catalog.json` fails closed instead of
+    /// silently falling back to the empty embedded catalog.
+    pub fn from_root(root: impl Into<PathBuf>) -> Result<Self, ComponentError> {
+        let root = root.into();
+        let catalog_file = root.join("catalog.json");
+        match fs::symlink_metadata(&catalog_file) {
+            Ok(_) => Self::from_package_catalog(root, &catalog_file),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Self::embedded(root),
+            Err(error) => Err(ComponentError::Io(error)),
+        }
+    }
+
     pub fn catalog(&self) -> &EmbeddedComponentCatalog {
         &self.catalog
     }
@@ -657,6 +671,55 @@ mod tests {
             load_catalog_file(&root),
             Err(ComponentError::InvalidCatalog(_))
         ));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn from_root_prefers_package_catalog_and_fails_closed() {
+        let root = temp_root("from-root");
+        let components_root = root.join("components");
+
+        // Absent catalog.json falls back to the embedded catalog.
+        let fallback = ComponentManager::from_root(&components_root).expect("embedded fallback");
+        let fallback_status = fallback.bootstrap_status();
+        assert_eq!(fallback_status.catalog_version, "2026-09-20-u9");
+        assert_eq!(fallback_status.components_required, 0);
+        assert!(fallback_status.ready);
+
+        // Present valid catalog.json is loaded and reports missing components.
+        let artifact = root.join("artifact");
+        fs::create_dir_all(&artifact).expect("artifact");
+        fs::write(artifact.join("worker.bin"), b"worker").expect("worker");
+        fs::write(artifact.join("LICENSE.txt"), b"MIT").expect("license");
+        let spec = fixture_spec(&root, "1.0.0");
+        let catalog = EmbeddedComponentCatalog {
+            schema_version: COMPONENT_CATALOG_SCHEMA_VERSION,
+            catalog_version: "2026-11-26-package".to_owned(),
+            components: vec![spec],
+        };
+        fs::create_dir_all(&components_root).expect("components root");
+        let catalog_file = components_root.join("catalog.json");
+        fs::write(
+            &catalog_file,
+            serde_json::to_vec(&catalog).expect("catalog json"),
+        )
+        .expect("write catalog");
+
+        let packaged = ComponentManager::from_root(&components_root).expect("package catalog");
+        let packaged_status = packaged.bootstrap_status();
+        assert_eq!(packaged_status.catalog_version, "2026-11-26-package");
+        assert_eq!(packaged_status.components_required, 1);
+        assert_eq!(packaged_status.components_active, 0);
+        assert!(!packaged_status.ready);
+        assert_eq!(packaged_status.missing_components, vec!["worker"]);
+
+        // Present invalid catalog.json fails closed rather than falling back.
+        fs::write(&catalog_file, b"{corrupt").expect("corrupt catalog");
+        assert!(matches!(
+            ComponentManager::from_root(&components_root),
+            Err(ComponentError::InvalidCatalog(_))
+        ));
+
         fs::remove_dir_all(root).expect("cleanup");
     }
 }

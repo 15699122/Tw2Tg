@@ -1,9 +1,36 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-25, Windows M1–M3 verification at `a5a2dd0d`)
+## Resume summary — authoritative cursor (2026-11-26, post-`v0.2.1-pre2` Phase 0.1 + Phase 1.1/1.2 on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner (**`READY_FOR_WINDOWS`** for non-blocking `Core Bootstrap` `.dependency-missing` & Windows release/signing queue; `WINDOWS_BLOCKING`: none).
+- Branch: **`dev`**.
+- Source baseline: **`96d18e0ff574ad2e978ee13d5bef862357013cb7`** (`96d18e0f`, after merging `security/dependency-advisories-2026-11-25` into `dev` and deleting the merged branch).
+- Completed Cross-platform batch on `dev`:
+  1. **Phase 0.1 (Security branch merge)**: Fast-forward merged `security/dependency-advisories-2026-11-25` (`96d18e0f`, `undici` `7.29.1 -> 7.30.2` / `6.28.1 -> 6.29.1`) into `dev` and deleted the merged branch locally and on `origin`.
+  2. **Phase 1.2 (Hosted Windows CI WDIO diagnostic)**: Inspected `windows-release.yml` Run `45615148610` job `139219489403` (`Independent Windows WDIO (non-blocking for release)`). Confirmed `preflight = 'success'` and `msedgedriver` listened on port `4445`, then failed after 3m02s with `WebDriverError: session not created: DevToolsActivePort file doesn't exist` — a known hosted `windows-latest` non-interactive runner limitation, not a product defect (physical Windows WebView2 R1–R7 & M1–M3 all passed).
+  3. **Phase 1.1 (Package catalog wiring)**: Added `ComponentManager::from_root` in [`desktop/src-tauri/src/components.rs`](../../desktop/src-tauri/src/components.rs) and wired `get_component_bootstrap_status` in [`desktop/src-tauri/src/commands/app.rs`](../../desktop/src-tauri/src/commands/app.rs) to load a shipped `<portable_root>/components/catalog.json` when present (failing closed on invalid/unreadable JSON or schema mismatch) and fall back to `embedded_catalog()` (`2026-09-20-u9`) only when absent. Resealed [`scripts/architecture-baseline.json`](../../scripts/architecture-baseline.json).
+- Linux validation gates passed on `dev`:
+  - `cargo fmt --all -- --check`: **PASS**
+  - `cargo test -p xarchive-desktop --lib components --offline`: **PASS** (`7 passed`, including `from_root_prefers_package_catalog_and_fails_closed`)
+  - `cargo clippy -p xarchive-desktop --all-targets --offline -- -D warnings`: **PASS**
+  - `cargo test -p xarchive-desktop --offline`: **PASS** (`376 passed, 0 failed, 15 ignored`)
+  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
+  - `npm --prefix desktop run build`: **PASS**
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
+  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
+- Remaining non-blocking queue items (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - `Core Bootstrap` missing-catalog `.dependency-missing`: **READY_TO_RUN on Windows** — now unblocked by `ComponentManager::from_root` by placing a fixture `components/catalog.json` inside an isolated `XARCHIVE_PORTABLE_ROOT`.
+  - Windows CI / Release pipeline (versioned release manifest inputs, release-asset activation, Authenticode signing): **NOT_RUN**.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-25, Windows M1–M3 verification at `a5a2dd0d`
 
 ### Cursor
 

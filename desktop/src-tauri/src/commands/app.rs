@@ -119,7 +119,7 @@ pub(crate) fn get_component_bootstrap_status(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    crate::components::ComponentManager::embedded(state.portable_root.join("components"))
+    crate::components::ComponentManager::from_root(state.portable_root.join("components"))
         .map(|manager| manager.bootstrap_status())
         .map_err(|error| error.to_string())
 }

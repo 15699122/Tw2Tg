@@ -744,7 +744,7 @@
     "desktop/src-tauri/src/commands/app.rs": {
       "category": "rust-desktop",
       "lines": 140,
-      "sha256": "476ec726130fcbd6704151c72efd3b4e5571bb65d563944bffaebfd0e4e571ab"
+      "sha256": "340d18cc29e38d78161288015c5b7e0ac9f82bfa20cb7f7fca88bdbd576f5346"
     },
     "desktop/src-tauri/src/commands/archive.rs": {
       "category": "rust-desktop",
@@ -813,8 +813,8 @@
     },
     "desktop/src-tauri/src/components.rs": {
       "category": "rust-desktop",
-      "lines": 662,
-      "sha256": "8f37189ae3afc5599568ff979182dc9d79b0bda653349949eaba3b8c0ace704a"
+      "lines": 725,
+      "sha256": "b665454ed7143214b21f042b1e832ede504706584f56069270736c1c74758bcc"
     },
     "desktop/src-tauri/src/config.rs": {
       "category": "rust-desktop",
