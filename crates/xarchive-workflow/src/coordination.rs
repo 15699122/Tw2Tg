@@ -173,12 +173,18 @@ impl fmt::Display for LockName {
 
 /// Derives the stable lock file path for one scope.
 ///
-/// The name is a digest of the scope rather than the scope itself: a
-/// destination path contains separators that cannot appear in a single file
-/// name, and a fixed-length digest keeps unrelated scopes from colliding.
+/// Both job IDs and destination paths are hashed into fixed-length,
+/// filename-safe digests: job IDs may contain ISO-8601 colons (`:`) and
+/// destination paths contain separators that cannot appear in a single file
+/// name. Prefixing prevents job scopes from colliding with destination scopes.
 pub fn lock_file_path(lock_directory: &Path, scope: &LockScope) -> Result<PathBuf, LockError> {
     let name = match scope {
-        LockScope::Job(job_id) => LockName::new(job_id)?.as_str().to_owned(),
+        LockScope::Job(job_id) => {
+            if job_id.trim().is_empty() {
+                return Err(LockError::InvalidName);
+            }
+            digest_name(format!("job:{job_id}"))?
+        }
         LockScope::Destination(destination) => digest_name(destination)?,
     };
     Ok(lock_directory.join(format!("{name}.lock")))
@@ -336,4 +342,31 @@ pub fn replay_rename_stage<M: NoReplaceMover>(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_file_path_accepts_iso8601_colons_in_job_ids_without_colliding() {
+        let dir = Path::new("/tmp/locks");
+        let job_id = "archive-2125900602010206383-2026-11-26T11:40:59Z";
+        let job_lock = lock_file_path(dir, &LockScope::Job(job_id.to_owned()))
+            .expect("ISO-8601 job_id must produce a valid lock path");
+        let filename = job_lock
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("utf8 lock filename");
+        assert!(filename.ends_with(".lock"));
+        assert!(!filename.contains(':'));
+
+        let dest_lock = lock_file_path(dir, &LockScope::Destination(PathBuf::from(job_id)))
+            .expect("destination digest");
+        assert_ne!(job_lock, dest_lock);
+        assert!(matches!(
+            lock_file_path(dir, &LockScope::Job("   ".to_owned())),
+            Err(LockError::InvalidName)
+        ));
+    }
 }

@@ -603,8 +603,8 @@
     },
     "crates/xarchive-workflow/src/coordination.rs": {
       "category": "rust-library",
-      "lines": 339,
-      "sha256": "8d3989ae1932c39088553779fa7751caf0dc457590cd9979a8ac86b362c349f2"
+      "lines": 372,
+      "sha256": "48fdb10c7eb6232eecec2ae7e319c8492ecc4e500b397891c1996feecd759b98"
     },
     "crates/xarchive-workflow/src/coordination/unix.rs": {
       "category": "rust-library",
@@ -1308,8 +1308,8 @@
     },
     "extension/options.js": {
       "category": "frontend-source",
-      "lines": 35,
-      "sha256": "af145cdfe664b2cca5b7009fb355832f18456dd049edeea3c6d2edf1194d61c6"
+      "lines": 38,
+      "sha256": "2e345c280fdea30cc4b0f6a88b352035aced5b22e9b696e56f832eb7104a954a"
     },
     "extension/popup.js": {
       "category": "frontend-source",

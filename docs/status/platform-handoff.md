@@ -1,9 +1,43 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-26, live Edge + X re-test at `0f27d39b` on `dev`)
+## Resume summary — authoritative cursor (2026-11-26, `LockScope::Job` colon fix & Extension options layout polish on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Branch: **`dev`**.
+- Source baseline: **`0c7a21796f9d6ce7c4291f82fc2dae68f3ef3497`** (`0c7a2179`, Windows `0f27d39b` live Edge + X findings).
+- Completed Cross-platform fixes on `dev`:
+  1. **`LockScope::Job` lock path supports ISO-8601 `:` timestamps ([`crates/xarchive-workflow/src/coordination.rs`](../../crates/xarchive-workflow/src/coordination.rs))**:
+     - Updated `lock_file_path` so `LockScope::Job(job_id)` rejects blank names and hashes `format!("job:{job_id}")` with `digest_name` (matching `LockScope::Destination` while preventing job/destination scope collisions).
+     - Added regression unit test `lock_file_path_accepts_iso8601_colons_in_job_ids_without_colliding` covering `archive-2125900602010206383-2026-11-26T11:40:59Z`.
+  2. **Extension options layout & troubleshooting note polish ([`extension/options.css`](../../extension/options.css), [`options.html`](../../extension/options.html), [`options.js`](../../extension/options.js))**:
+     - Aligned `.card` to flat desktop tokens (`border-radius: 10px`, `1px solid #e5e5e5`, no `box-shadow`).
+     - Added `4px` gap between `h2` and `.card-heading p` subtitle.
+     - Added `1px solid #f0f0f0` top separator, `min-height: 38px`, and `line-height: 1.45` to `.state-line` rows.
+     - Hides `#connection-help` (`连接失败时请确认…`) when `websocket.state === "connected"` and hides empty `#connection-error` notes.
+- Linux validation gates passed on `dev`:
+  - `cargo fmt --all -- --check`: **PASS**
+  - `cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe --offline`: **PASS**
+  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (0 failed across all workspace crates & doctests)
+  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
+  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
+  - `npm --prefix desktop run build`: **PASS**
+  - `npm --prefix extension test`: **PASS** (`58 pass, 0 fail`)
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
+  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
+- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - Rebuild `xarchive-desktop.exe` and reload `extension/` on `dev`, then re-run the live Edge + real X account end-to-end test across **3 real tweets (single photo / multi-photo / single video)** (`Extension -> Desktop -> aria2c.exe`), verifying:
+    1. Browser-submitted ISO-8601 jobs acquire coordination scopes, claim attempts, download media via `aria2c.exe`, and reach `COMPLETE`;
+    2. `extension/options.html` cards are flat `10px` radius with `1px solid #e5e5e5`, clean `h2`/subtitle gap, separated `当前状态` rows, and hidden troubleshooting note while WebSocket is authenticated.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-26, live Edge + X re-test at `0f27d39b` on `dev`
 
 ### Cursor
 
