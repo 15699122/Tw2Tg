@@ -1,14 +1,19 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-26, Phase 2.1 `aria2-only` convergence + security triage on `dev`)
+## Resume summary — authoritative cursor (2026-11-26, Windows validation at `976e03f1`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Owner: Windows Platform Owner (**`WINDOWS_BATCH_CLOSED`**; `WINDOWS_BLOCKING`: none; legacy `transfer-switch-*.e2e.mjs` / `transfer-save-failure.e2e.mjs` retirement routed as `CROSS_PLATFORM_CHANGE_REQUIRED` if cleanup is desired).
 - Branch: **`dev`**.
+- Validated input revision: **`976e03f199c1f3f7c95bd4fb4fc14c636ed1d408`** (`976e03f1` Phase 2.1 `aria2-only` convergence, including `fda4b7ff` `ComponentManager::from_root`).
+- Fresh Windows Release builds at `976e03f1`:
+  - Standard Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `5bf1180a29e420d3a5cfe2348b3f7009ae552edc8bcaf11b8b896efa733234d0`.
+  - WDIO dev-channel Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `5bdefb4b32603bb316f6d90d717ab8fa5118461f911a615d7adedebb2f72f759`.
+  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `158.0.4370.33`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
 - Source baseline: **`fda4b7ff`** (`ComponentManager::from_root` package catalog loader) + this Phase 2.1 batch.
 - Completed Cross-platform batch on `dev`:
   1. **Security triage closure**: Dismissed unpatchable Dependabot alerts `#1` (`glib`), `#4` / `#6` (`extract-zip`), and `#38` (`basic-ftp`) on GitHub as `tolerable_risk` per user confirmation and recorded the disposition in [`docs/development/security-remediation-plan.md`](../development/security-remediation-plan.md). Kept `dev -> main` merge deferred until `v0.2.1` GA.
@@ -30,10 +35,15 @@
   - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
   - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
   - `python3 -m pytest sidecar/tests`: **NOT_RUN** (`pytest` not installed in `/usr/bin/python3`; `sidecar/` unchanged)
-- Windows Platform Owner queue (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  1. Verify Phase 2.1 `aria2-only` UI (`DashboardPage` `下载方式: aria2` + `DownloadConfigPage` `#transfer-backend-settings` without toggle) and real Windows `aria2c.exe` end-to-end download; note that legacy `desktop/e2e/specs/transfer-switch-*.e2e.mjs` / `transfer-save-failure.e2e.mjs` target the retired `use_aria2` toggle.
-  2. Verify `Core Bootstrap` missing-catalog `.dependency-missing` (`ComponentManager::from_root` from `fda4b7ff`) with a fixture `components/catalog.json` inside an isolated `XARCHIVE_PORTABLE_ROOT`.
-  3. Remaining non-blocking release/pipeline items: real external X/Telegram/Extension end-to-end checks and Windows CI/Authenticode signing as applicable.
+- Executed Windows checks at `976e03f1`:
+  - `cargo test -p xarchive-desktop --lib commands::settings --quiet`: **PASS 11/11** (`342 filtered out`).
+  - `cargo test -p xarchive-desktop --lib windows_contained_aria2_supervisor_drains_and_authorizes_publication --quiet`: **PASS** (real Windows `aria2c.exe` contained transfer drain & publication).
+  - `npm --prefix desktop test`: **PASS** (`tests 285`, `suites 17`, `pass 284`, `fail 0`, `skipped 1` POSIX-only skip).
+  - Real WebView2 Phase 2.1 `aria2-only` & `Core Bootstrap` `.dependency-missing` (`5bdefb4b...`, Light + Dark, isolated root `target/ui-p21-root-976e03f1-20261126161335` with fixture `components/catalog.json`, evidence `target/ui-p21-976e03f1-20261126161335/runner.log`, `1 passing (2.7s)`): **PASS** (`set_use_aria2(false)` IPC rejected `"aria2-only media transfer is enforced; gallery-dl direct download has been retired"`, `get_app_status` kept `use_aria2: true`, Dashboard `下载方式` fixed at `aria2`, `#transfer-backend-settings` had `0` switches and retained `#aria2-settings`/`.aria2-path-controls`, `#bootstrap-settings .dependency-status.dependency-missing` rendered `1px dashed` with `"组件目录需要设置1 catalog component(s) require setup · catalog 2026-11-26-fixture"`).
+- Non-blocking release queue status (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - Real external X / Telegram / Extension live-account end-to-end checks: **NOT_RUN** (no external live credentials in isolated run).
+  - Windows Authenticode signing: **NOT_RUN** (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`).
+  - Legacy `desktop/e2e/specs/transfer-switch-*.e2e.mjs` & `transfer-save-failure.e2e.mjs` target the retired `use_aria2` toggle (`CROSS_PLATFORM_CHANGE_REQUIRED` for shared E2E cleanup/migration).
 - `WINDOWS_BLOCKING`: **none**.
 
 ---

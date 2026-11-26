@@ -1,5 +1,23 @@
 # Windows Validation History
 
+## Windows Phase 2.1 `aria2-only` & Core Bootstrap `.dependency-missing` at 976e03f1 — 2026-11-26
+
+At input revision `976e03f199c1f3f7c95bd4fb4fc14c636ed1d408` (`976e03f1`, Phase 2.1 `aria2-only` convergence + `fda4b7ff` `ComponentManager::from_root`) on `dev`:
+
+- **Builds & environment**:
+  - Standard Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `5bf1180a29e420d3a5cfe2348b3f7009ae552edc8bcaf11b8b896efa733234d0`.
+  - WDIO dev-channel Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `5bdefb4b32603bb316f6d90d717ab8fa5118461f911a615d7adedebb2f72f759`.
+  - Host: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `158.0.4370.33`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- **Rust & Node checks**:
+  - `cargo test -p xarchive-desktop --lib commands::settings --quiet`: **PASS 11/11** (`342 filtered out`).
+  - `cargo test -p xarchive-desktop --lib windows_contained_aria2_supervisor_drains_and_authorizes_publication --quiet`: **PASS** (real `aria2c.exe` contained transfer drain & publication).
+  - `npm --prefix desktop test`: **PASS** (`tests 285`, `suites 17`, `pass 284`, `fail 0`, `skipped 1` POSIX-only skip).
+- **WebView2 Phase 2.1 & Core Bootstrap checks** (`5bdefb4b...`, Light + Dark, isolated root `target/ui-p21-root-976e03f1-20261126161335` with fixture `components/catalog.json`, evidence `target/ui-p21-976e03f1-20261126161335/runner.log`, `1 passing (2.7s)`):
+  - `set_use_aria2(false)` live IPC rejected (`"aria2-only media transfer is enforced; gallery-dl direct download has been retired"`), `get_app_status` kept `use_aria2: true`.
+  - Dashboard `下载方式` fixed at `aria2` (`tone: "ok"`), `Core Bootstrap` showed `需要检查` (`tone: "warn"`); Download Config `#transfer-backend-settings` had `0` switches and retained `#aria2-settings` / `.aria2-path-controls`.
+  - Settings `#bootstrap-settings .dependency-status.dependency-missing` rendered `1px dashed` (`rgb(207, 207, 207)` Light / `rgb(85, 94, 105)` Dark, `7px` radius) with `"组件目录需要设置1 catalog component(s) require setup · catalog 2026-11-26-fixture"`.
+- **Non-blocking items**: real external X/Telegram/Extension live-account E2E **NOT_RUN**; Authenticode signing **NOT_RUN** (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`); legacy `transfer-switch-*.e2e.mjs` & `transfer-save-failure.e2e.mjs` flagged `CROSS_PLATFORM_CHANGE_REQUIRED` for shared E2E cleanup.
+
 ## Windows M1–M3 UI micro-polish verification at a5a2dd0d — 2026-11-25
 
 At input revision `a5a2dd0d63d80c15e1c98c96fe9f09d5ec65aea9` (`a5a2dd0d`, M1–M3 micro-polish & M4 review on top of `7cc91be9`) on `codex/windows-validation-7450451b`:

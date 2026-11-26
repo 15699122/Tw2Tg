@@ -1,34 +1,23 @@
-## Current Windows queue — 2026-11-25
+## Current Windows queue — 2026-11-26
 
-Owner: Windows Platform Owner (`WINDOWS_BATCH_CLOSED`). Branch: `codex/windows-validation-7450451b`. Validated input revisions: `4f45874fe4a63d08df1d58d9fbdcf9c364228325` (`4f45874f`, R1 re-verification) on top of `b2a41a45513b93929dab7b41a80360067eb39fdb` (`b2a41a45`). Results are recorded in [Windows validation history](windows-validation-history.md).
+Owner: Windows Platform Owner (`WINDOWS_BATCH_CLOSED`). Branch: `dev`. Validated input revision: `976e03f199c1f3f7c95bd4fb4fc14c636ed1d408` (`976e03f1`, Phase 2.1 `aria2-only` convergence + `fda4b7ff` `ComponentManager::from_root`). Results are recorded in [Windows validation history](windows-validation-history.md).
 
-Fresh Windows Release builds & environment:
-- Standard Release `xarchive-desktop.exe` (`b2a41a45`): **PASS**, SHA-256 `463da1ffb11b0275e04e7c7ee55d3c921b6a2744d9d84b35a585bbf404067797`.
-- WDIO dev-channel Release `xarchive-desktop.exe` (`4f45874f`, `npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `38208f347c05c69b2a31a69cd7f4f383f5ca36919e7cc383464aa64a41141b71` (replacing `b2a41a45` `0fcdf82a...`).
-- Host / runtime: Windows `10.0.29712` (`29712`), WebView2 `157.0.4341.60`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `dpr: 2` (200% DPI), `1080×760` viewport.
-- `npm --prefix desktop test` (`b2a41a45`): **PASS** (`tests 284`, `suites 17`, `pass 283`, `fail 0`, `skipped 1` POSIX-only skip).
+Fresh Windows Release builds & environment (`976e03f1`):
+- Standard Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `5bf1180a29e420d3a5cfe2348b3f7009ae552edc8bcaf11b8b896efa733234d0`.
+- WDIO dev-channel Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `5bdefb4b32603bb316f6d90d717ab8fa5118461f911a615d7adedebb2f72f759`.
+- Host / runtime: Windows `10.0.29712` (`29712`), WebView2 `158.0.4370.33`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `dpr: 2` (200% DPI), `1080×760` viewport.
 
-Round-2 UI polish & opt-in WDIO specs:
-- **R1 Error strip** (`4f45874f`, WDIO Release `38208f34...`, Light + Dark, `target/ui-r1-4f45874f-20261125131321/runner.log`): **PASS** (`1 passing (3s)`) — `.settings-message-error` inside `#downloader-arguments .settings-panel-content` renders `marginTop: 12px`, `1px`, `rgb(240, 184, 181)`, `7px` radius, `9px 11px` padding, `--danger-surface` (`rgb(255, 241, 240)` Light / `rgb(70, 39, 37)` Dark).
-- **R2 Disabled textarea** (`b2a41a45`, `0fcdf82a...`): **PASS** (`#record-import-records` & `#gallery-dl-arguments` `resize: none`; disabled `#gallery-dl-arguments` `--surface-muted` & `--foreground-muted` in Light + Dark).
-- **R3 Disabled buttons** (`b2a41a45`, `0fcdf82a...`): **PASS** (7 disabled buttons on Settings — `default` + `outline` — unified `--border`, `--surface-muted`, `--foreground-muted`, `opacity: 1` in Light + Dark).
-- **R4 Input widths** (`b2a41a45`, `0fcdf82a...`): **PASS** (Telegram credential field & proxy diagnose URL `maxWidth: none`, `widthMatch: true` in Light + Dark).
-- **R5 Empty states** (`b2a41a45`, `0fcdf82a...`): **PASS** (`BatchesPage` `.empty-jobs > .empty-icon` `aria-hidden="true"`, `StoragePage` `settings-panel-static` without toggle/chevron in Light + Dark).
-- **R6 Layout** (`b2a41a45`, `0fcdf82a...`): **PASS** (`输出与配置` matches `下载设置` `["17px", "650"]`, `.settings-fields + .batch-form-options` `marginTop: 20px`, `.dashboard-detail` `textWrap: pretty`, `aria2` `.path-display` in Light + Dark).
-- **R7 Focus ring & scroll** (`b2a41a45`, `0fcdf82a...`): **PASS** (`2px solid rgb(0, 103, 192)` Light / `rgb(120, 186, 255)` Dark, `html` `overflowY: hidden`, `.main-panel` `overflowY: auto`; Dark-mode `window.scrollTo(0, 100)` behavior reviewed by Cross-platform Owner at `4f45874f` and confirmed keep as-is).
-- **W7 opt-in WDIO specs** (`b2a41a45`, `0fcdf82a...`, `WDIO_ADVANCED=1`, isolated portable roots):
-  - `transfer-switch-focus.e2e.mjs` (`WDIO_TRANSFER_SWITCH_GUI=1`): **PASS 1/1** (`target/w7-focus-b2a41a45-20261125121247/runner.log`).
-  - `transfer-switch-held-busy.e2e.mjs` (`WDIO_TRANSFER_HELD_BUSY_GUI=1`): **PASS 1/1** (`target/w7-held-busy-b2a41a45-20261125121254/runner.log`).
-  - `transfer-switch-moved-focus.e2e.mjs` (`WDIO_TRANSFER_MOVED_FOCUS_GUI=1`): **PASS 1/1** (`target/w7-moved-focus-b2a41a45-20261125121657/runner.log`).
-
-- **Non-zero Dashboard / Jobs metrics** (`4f45874f`, WDIO Release `38208f34...`, Light + Dark, `target/ui-nonzero-4f45874f-20261125142947/runner.log`): **PASS** (`1 passing (2.7s)`) — seeded `COMPLETE` + `FAILED` + `QUEUED` jobs in isolated `archive.sqlite3`; Dashboard rendered `全部任务 3` (`metric-default`), `进行中 1` (`metric-default`), `已完成 1` (`metric-green`), `失败 1` (`metric-red`), `recentRows: 3`, and `任务记录` rendered `rowCount: 3`, `emptyCount: 0`, `paginationHidden: true` in Light + Dark.
-
-- **M1–M3 micro-polish** (`a5a2dd0d`, WDIO Release `a5cf2dad...`, Light + Dark, `target/ui-m1-m3-a5a2dd0d-20261125161154/runner.log`): **PASS** (`1 passing (2.9s)`) — **M1** `#output-settings .batch-form-options + .settings-help` `marginTop: 12px`; **M2** `#downloader-arguments .settings-panel-content .settings-message-error + .ui-button` `marginTop: 14px` (gap `14px`); **M3** `aria2c` monospace `<code>` pills and unset `.path-display` (`1px solid`, `7px`, `8px 10px`, `--surface-subtle` `rgb(250, 250, 250)` / `rgb(32, 35, 40)`). **M4** closed as-is per Cross-platform Owner review.
+Executed checks at `976e03f1`:
+- `cargo test -p xarchive-desktop --lib commands::settings --quiet`: **PASS 11/11** (`342 filtered out`).
+- `cargo test -p xarchive-desktop --lib windows_contained_aria2_supervisor_drains_and_authorizes_publication --quiet`: **PASS** (real `aria2c.exe` contained transfer drain & publication).
+- `npm --prefix desktop test`: **PASS** (`tests 285`, `suites 17`, `pass 284`, `fail 0`, `skipped 1` POSIX-only skip).
+- **Phase 2.1 `aria2-only` & `Core Bootstrap` `.dependency-missing`** (`5bdefb4b...`, Light + Dark, `target/ui-p21-976e03f1-20261126161335/runner.log`): **PASS** (`1 passing (2.7s)`) — `set_use_aria2(false)` IPC rejected (`"aria2-only media transfer is enforced; gallery-dl direct download has been retired"`), `get_app_status` kept `use_aria2: true`, Dashboard `下载方式` fixed at `aria2`, Download Config `#transfer-backend-settings` had `0` switches and retained `#aria2-settings`/`.aria2-path-controls`, and fixture `components/catalog.json` triggered `#bootstrap-settings .dependency-status.dependency-missing` (`1px dashed`, `7px` radius, `"组件目录需要设置1 catalog component(s) require setup · catalog 2026-11-26-fixture"`).
 
 Manual Validation Queue (remaining open Windows items):
 
-- W7 / UI consistency: manual 200% DPI visual eye-check **PASS scoped** (`4f45874f`, `38208f34...`) + M1–M3 follow-ups **PASS** (`a5a2dd0d`, `a5cf2dad...`); `Core Bootstrap` missing-catalog `.dependency-missing` **NOT_RUN** (`components.rs` embedded catalog `2026-09-20-u9` has `components_required: 0` until populated release assets ship).
-- Windows CI / Release pipeline: versioned release manifest inputs, release-asset activation, and Authenticode signing (**NOT_RUN**).
+- Real external X / Telegram / Extension live-account end-to-end checks: **NOT_RUN** (no external live credentials in isolated run).
+- Windows CI / Release pipeline: Authenticode signing **NOT_RUN** (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`); versioned release-asset activation **NOT_RUN**.
+- Legacy `desktop/e2e/specs/transfer-switch-*.e2e.mjs` & `transfer-save-failure.e2e.mjs` target the retired `use_aria2` toggle (`CROSS_PLATFORM_CHANGE_REQUIRED` for shared E2E cleanup/migration).
 
 Reconciled W1–W6 history from `backup/windows-local-8eeb709` (`8eeb709`):
 
