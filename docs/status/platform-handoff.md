@@ -17,6 +17,8 @@
     2. **Extension UI consistency**:
        - [`extension/options.css`](../../extension/options.css): still uses legacy purple (`#9b63e9`, `#a76be7`, `#7e48ce`, `#d9bdf7`) instead of the desktop palette (`#171717` primary button, `#2e6f59` toggle, `#0067c0` focus ring, `#e5e5e5` border); `.card-heading` lacks `align-items: center` (toggle vertically misaligned), and `h2` / `.card-heading p` / `.state-line` spacing is too tight.
        - [`extension/src/content-core.js`](../../extension/src/content-core.js): inline button style (`color:#c6f277;background:#1b2a1b;border:1px solid #53684b`) clashes with X's tweet action bar across light/dark themes.
+    3. **Sidebar `Extension` status shows `未连接` while WebSocket `Desktop 观察` shows `已连接`**:
+       - In [`desktop/src-tauri/src/commands/extension.rs`](../../desktop/src-tauri/src/commands/extension.rs) (`#[cfg(windows)]`), `browser_connection` only reads `state.transport_server.session.browser_connection()` (Named Pipe) and does not combine `state.websocket_server`'s live authenticated WebSocket state, even though the comment claims both sources are combined. As a result, `extensionSidebarState` in [`ui-state.js`](../../desktop/src/lib/ui-state.js) shows red `未连接` in the sidebar whenever the extension is connected over WebSocket without a recent Named Pipe request.
 - Retained `976e03f1` build & prior checks below for reference:
   - Standard Release `xarchive-desktop.exe`: **PASS**, SHA-256 `5bf1180a29e420d3a5cfe2348b3f7009ae552edc8bcaf11b8b896efa733234d0` (live test build `46fda15f807b0f4550ce934a6119ea690b223997b26f5e5efe98c688095178f8`).
   - WDIO dev-channel Release `xarchive-desktop.exe`: **PASS**, SHA-256 `5bdefb4b32603bb316f6d90d717ab8fa5118461f911a615d7adedebb2f72f759`.
