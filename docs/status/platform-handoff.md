@@ -1,19 +1,26 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-26, Windows validation at `976e03f1`)
+## Resume summary — authoritative cursor (2026-11-26, live Edge + X test findings on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Windows Platform Owner (**`WINDOWS_BATCH_CLOSED`**; `WINDOWS_BLOCKING`: none; legacy `transfer-switch-*.e2e.mjs` / `transfer-save-failure.e2e.mjs` retirement routed as `CROSS_PLATFORM_CHANGE_REQUIRED` if cleanup is desired).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**; `WINDOWS_BLOCKING`: none).
 - Branch: **`dev`**.
-- Validated input revision: **`976e03f199c1f3f7c95bd4fb4fc14c636ed1d408`** (`976e03f1` Phase 2.1 `aria2-only` convergence, including `fda4b7ff` `ComponentManager::from_root`).
-- Fresh Windows Release builds at `976e03f1`:
-  - Standard Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `5bf1180a29e420d3a5cfe2348b3f7009ae552edc8bcaf11b8b896efa733234d0`.
-  - WDIO dev-channel Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri:wdio`, `XARCHIVE_RELEASE_CHANNEL="dev"`): **PASS**, SHA-256 `5bdefb4b32603bb316f6d90d717ab8fa5118461f911a615d7adedebb2f72f759`.
-  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `158.0.4370.33`, EdgeDriver `157.0.4341.60` (`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-157.0.4341.60\msedgedriver.exe`), `WDIO_DIRECT_DRIVER=1`, `devicePixelRatio: 2` (200% DPI), `1080×760` viewport.
+- Source baseline: **`e4b99e3467a8e6b5d079af8c56a1754bb4b9d3a4`** (`e4b99e3`, Windows `976e03f1` validation write-back).
+- **Live Edge + real X account test (`target/live-e2e-976e03f1`, `46fda15f...`)**:
+  - **Passed**: Extension loaded in real Edge, Native Host / WebSocket paired (`WebSocket 已认证 · 64619`), Sidecar `xarchive-downloader.exe` reached `sidecar: handshake ready`, and tweet `2125606699356635170` persisted `JOB_CREATED` (`archive-2125606699356635170-2026-11-26T07:38:39Z`, `archive_job_requests` schema v3) in `archive.sqlite3`.
+  - **Findings (`CROSS_PLATFORM_CHANGE_REQUIRED`)**:
+    1. **Job stuck in `QUEUED` (`排队中`)**: No `StateChanged` event or error log was emitted after `JOB_CREATED`. In [`application_service.rs`](../../desktop/src-tauri/src/executor/runtime/application_service.rs), `schedule_persisted` runs `StorageJobPersistence::open` / `ProductionCoordinator::from_admission` / `boundary.execute_on_runner(job_id).and_then(resolve_session_run)` on a detached thread and silently drops errors or `Reschedulable` outcomes (`else { return; }` / `let _ = ...`) without logging or failing/rescheduling the `QUEUED` job. Diagnose why `execute_on_runner` exited before `claim_attempt` in the live portable session and surface/handle errors deterministically.
+    2. **Extension UI consistency**:
+       - [`extension/options.css`](../../extension/options.css): still uses legacy purple (`#9b63e9`, `#a76be7`, `#7e48ce`, `#d9bdf7`) instead of the desktop palette (`#171717` primary button, `#2e6f59` toggle, `#0067c0` focus ring, `#e5e5e5` border); `.card-heading` lacks `align-items: center` (toggle vertically misaligned), and `h2` / `.card-heading p` / `.state-line` spacing is too tight.
+       - [`extension/src/content-core.js`](../../extension/src/content-core.js): inline button style (`color:#c6f277;background:#1b2a1b;border:1px solid #53684b`) clashes with X's tweet action bar across light/dark themes.
+- Retained `976e03f1` build & prior checks below for reference:
+  - Standard Release `xarchive-desktop.exe`: **PASS**, SHA-256 `5bf1180a29e420d3a5cfe2348b3f7009ae552edc8bcaf11b8b896efa733234d0` (live test build `46fda15f807b0f4550ce934a6119ea690b223997b26f5e5efe98c688095178f8`).
+  - WDIO dev-channel Release `xarchive-desktop.exe`: **PASS**, SHA-256 `5bdefb4b32603bb316f6d90d717ab8fa5118461f911a615d7adedebb2f72f759`.
+  - Host / runtime: Windows `10.0.29712` (`BuildNumber: 29712`), WebView2 Evergreen `158.0.4370.33`, EdgeDriver `157.0.4341.60`, `200% DPI`, `1080×760` viewport.
 - Source baseline: **`fda4b7ff`** (`ComponentManager::from_root` package catalog loader) + this Phase 2.1 batch.
 - Completed Cross-platform batch on `dev`:
   1. **Security triage closure**: Dismissed unpatchable Dependabot alerts `#1` (`glib`), `#4` / `#6` (`extract-zip`), and `#38` (`basic-ftp`) on GitHub as `tolerable_risk` per user confirmation and recorded the disposition in [`docs/development/security-remediation-plan.md`](../development/security-remediation-plan.md). Kept `dev -> main` merge deferred until `v0.2.1` GA.

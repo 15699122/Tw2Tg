@@ -15,7 +15,7 @@ Executed checks at `976e03f1`:
 
 Manual Validation Queue (remaining open Windows items):
 
-- Real external X / Telegram / Extension live-account end-to-end checks: **NOT_RUN** (no external live credentials in isolated run).
+- Live Edge + real X end-to-end (`target/live-e2e-976e03f1`, `46fda15f...`): Extension paired (`WebSocket 已认证 · 64619`) and created `JOB_CREATED` for `2125606699356635170`, but job stuck in `QUEUED` (`排队中`) and Extension UI (`extension/options.css`, `extension/src/content-core.js`) violates desktop design tokens (`CROSS_PLATFORM_CHANGE_REQUIRED` -> `READY_FOR_CROSS_PLATFORM`); Telegram end-to-end **NOT_RUN**.
 - Windows CI / Release pipeline: Authenticode signing **NOT_RUN** (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`); versioned release-asset activation **NOT_RUN**.
 - Legacy `desktop/e2e/specs/transfer-switch-*.e2e.mjs` & `transfer-save-failure.e2e.mjs` target the retired `use_aria2` toggle (`CROSS_PLATFORM_CHANGE_REQUIRED` for shared E2E cleanup/migration).
 
