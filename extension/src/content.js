@@ -1,7 +1,7 @@
 (function () {
   if (typeof document === "undefined" || typeof MutationObserver === "undefined" || !globalThis.XArchiveContent) return;
 
-  const { applyArchiveStatus, createStatusQueryBatches, setArchiveButtonState } = globalThis.XArchiveContent;
+  const { applyArchiveStatus, createStatusPoller, createStatusQueryBatches, setArchiveButtonState } = globalThis.XArchiveContent;
   const inFlightStatusIds = new Set();
 
   function buttonForArticle(article) {
@@ -34,32 +34,43 @@
 
   function updateArticleButton(article, status) {
     const button = buttonForArticle(article);
-    if (button) applyArchiveStatus(button, status);
+    if (!button) return null;
+    return applyArchiveStatus(button, status);
   }
 
-  function queryStatuses(articles) {
+  const poller = createStatusPoller({
+    isDocumentHidden: () => Boolean(document.hidden),
+    queryStatuses: (articles) => queryStatuses(articles, { showChecking: false }),
+  });
+
+  function queryStatuses(articles, options = {}) {
+    const showChecking = options.showChecking !== false;
     const articleById = new Map();
     for (const article of articles || []) {
       const tweetId = article?.getAttribute?.("data-xarchive-archive");
       const button = buttonForArticle(article);
       if (!tweetId || !button || inFlightStatusIds.has(tweetId)) continue;
       articleById.set(tweetId, article);
-      setArchiveButtonState(button, "checking");
+      if (showChecking) setArchiveButtonState(button, "checking");
     }
-    for (const batch of createStatusQueryBatches([...articleById.keys()])) {
+    const requests = createStatusQueryBatches([...articleById.keys()]).map((batch) => {
       batch.forEach((tweetId) => inFlightStatusIds.add(tweetId));
-      sendRuntimeMessage({
+      return sendRuntimeMessage({
         type: "query_status",
         request_id: `status-${Date.now()}-${batch[0]}`,
         tweet_ids: batch,
       })
         .then((response) => {
           for (const status of response?.statuses || []) {
-            const article = articleById.get(String(status.tweet_id));
-            if (article) updateArticleButton(article, status);
+            const tweetId = String(status.tweet_id);
+            const article = articleById.get(tweetId);
+            if (!article) continue;
+            const nextState = updateArticleButton(article, status);
+            if (nextState) poller.track(tweetId, article, nextState);
           }
         })
         .catch(() => {
+          poller.stop();
           for (const tweetId of batch) {
             const article = articleById.get(tweetId);
             const button = buttonForArticle(article);
@@ -67,17 +78,27 @@
           }
         })
         .finally(() => batch.forEach((tweetId) => inFlightStatusIds.delete(tweetId)));
-    }
+    });
+    return Promise.all(requests);
   }
+
+  document.addEventListener?.("visibilitychange", () => poller.onVisibilityChange());
 
   globalThis.XArchiveContent.startContentScript({
     onArchive: (tweet, button) => {
       setArchiveButtonState(button, "submitting");
       const requestId = `archive-${tweet.tweet_id}-${Date.now()}`;
       sendRuntimeMessage({ type: "archive_request", request_id: requestId, tweet })
-        .then((response) => applyArchiveStatus(button, response))
-        .catch(() => setArchiveButtonState(button, "disconnected"));
+        .then((response) => {
+          const nextState = applyArchiveStatus(button, response);
+          const article = button?.closest?.("article") || document.querySelector?.(`article[data-xarchive-archive="${tweet.tweet_id}"]`);
+          if (article) poller.track(tweet.tweet_id, article, nextState);
+        })
+        .catch(() => {
+          poller.stop();
+          setArchiveButtonState(button, "disconnected");
+        });
     },
-    onArticles: queryStatuses,
+    onArticles: (articles) => queryStatuses(articles, { showChecking: true }),
   });
 })();

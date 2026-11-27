@@ -12,6 +12,7 @@ const {
   archiveStatusToUiState,
   canonicalTweetUrl,
   createArchiveButton,
+  createStatusPoller,
   createStatusQueryBatches,
   extractTweet,
   parseTweetId,
@@ -339,4 +340,59 @@ test("createArchiveButton uses desktop neutral 7px idle style and reserves #2e6f
   setArchiveButtonState(createdButton, "complete");
   assert.equal(createdButton.style.color, "#2e6f59");
   assert.equal(createdButton.children[2].textContent, "已归档");
+});
+
+test("createStatusPoller polls queued/running tweets until terminal and respects hidden/stop", async () => {
+  const scheduled = [];
+  let nextId = 1;
+  let hidden = false;
+  const states = ["running", "complete"];
+  const article = { id: "art-1" };
+  let poller;
+  poller = createStatusPoller({
+    intervalMs: 100,
+    maxAttempts: 5,
+    isDocumentHidden: () => hidden,
+    setTimer: (fn) => {
+      const id = nextId++;
+      scheduled.push({ id, fn });
+      return id;
+    },
+    clearTimer: (id) => {
+      const idx = scheduled.findIndex((item) => item.id === id);
+      if (idx >= 0) scheduled.splice(idx, 1);
+    },
+    queryStatuses: async (articles) => {
+      assert.equal(articles.length, 1);
+      assert.equal(articles[0], article);
+      const next = states.shift();
+      poller.track("2125853813256986653", article, next);
+    },
+  });
+
+  poller.track("2125853813256986653", article, "queued");
+  assert.equal(poller.pendingCount(), 1);
+  assert.equal(scheduled.length, 1);
+
+  hidden = true;
+  poller.onVisibilityChange();
+  assert.equal(scheduled.length, 0);
+
+  hidden = false;
+  poller.onVisibilityChange();
+  assert.equal(scheduled.length, 1);
+
+  await scheduled.shift().fn();
+  assert.equal(poller.pendingCount(), 1);
+  assert.equal(scheduled.length, 1);
+
+  await scheduled.shift().fn();
+  assert.equal(poller.pendingCount(), 0);
+  assert.equal(scheduled.length, 0);
+
+  poller.track("2125853813256986653", article, "queued");
+  assert.equal(poller.pendingCount(), 1);
+  poller.stop();
+  assert.equal(poller.pendingCount(), 0);
+  assert.equal(scheduled.length, 0);
 });

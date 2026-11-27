@@ -1,9 +1,35 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-27, Windows `785b288e` live Edge + X findings on `dev`)
+## Resume summary — authoritative cursor (2026-11-27, Extension active-job polling on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Branch: **`dev`**.
+- Source baseline: **`014d0742`** (`785b288e` Windows live Edge + X findings; single-photo `.jpg` + `image/jpeg` completed in 5s).
+- Completed Cross-platform fix on `dev`:
+  1. **Bounded active-job `query_status` polling in Extension ([`content-core.js`](../../extension/src/content-core.js), [`content.js`](../../extension/src/content.js), [`content.test.js`](../../extension/tests/content.test.js))**:
+     - Added `createStatusPoller` (`intervalMs: 1500`, `maxAttempts: 120`) in `content-core.js` and wired `content.js` (`onArchive`, `onArticles`, and `visibilitychange`) to track any tweet button in `queued` or `running` state.
+     - Background polls use `showChecking: false` (no `检测中…` flicker), transition buttons automatically (`● 排队中` → `● 归档中` → `● 已归档` `#2e6f59`), and stop polling on terminal states (`complete` / `failed` / `auth_required`), disconnect, `maxAttempts`, or `document.hidden === true` (resuming on tab visibility).
+     - Added `createStatusPoller polls queued/running tweets until terminal and respects hidden/stop` unit test.
+- Linux validation gates passed on `dev`:
+  - `npm --prefix extension test`: **PASS** (`59 pass, 0 fail`)
+  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
+  - `npm --prefix desktop run build`: **PASS**
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
+  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
+- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  - Reload `extension/` on `dev` (no Rust/Sidecar code changed since `785b288e`) and re-verify live Edge + real X tweets (single photo / multi-photo `2123437310977163454` / single video `2124843923462074816`), confirming:
+    1. Clicking `保存` transitions automatically `● 排队中` → `● 归档中` → `● 已归档` (`#2e6f59`) without refreshing the X page;
+    2. Multi-photo & single-video tweets archive with proper extensions and `mime_type`, plus remaining Telegram E2E / Authenticode checks.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-27, Windows `785b288e` live Edge + X findings on `dev`
 
 ### Cursor
 

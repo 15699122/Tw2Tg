@@ -328,11 +328,100 @@
     return () => observer.disconnect();
   }
 
+  function createStatusPoller(options) {
+    options = options || {};
+    const queryStatuses = options.queryStatuses;
+    const isDocumentHidden = options.isDocumentHidden || (() => false);
+    const intervalMs = options.intervalMs ?? 1500;
+    const maxAttempts = options.maxAttempts ?? 120;
+    const setTimer = options.setTimer || setTimeout;
+    const clearTimer = options.clearTimer || clearTimeout;
+
+    const pending = new Map();
+    let attempts = 0;
+    let timerId = null;
+    let inFlight = false;
+
+    function clearScheduled() {
+      if (timerId !== null) {
+        clearTimer(timerId);
+        timerId = null;
+      }
+    }
+
+    function scheduleNext(delay) {
+      if (timerId !== null || inFlight || pending.size === 0 || attempts >= maxAttempts || isDocumentHidden()) {
+        return;
+      }
+      timerId = setTimer(() => {
+        timerId = null;
+        return pollOnce();
+      }, delay ?? intervalMs);
+    }
+
+    async function pollOnce() {
+      if (inFlight || pending.size === 0 || isDocumentHidden()) {
+        return;
+      }
+      if (attempts >= maxAttempts) {
+        clearScheduled();
+        return;
+      }
+      attempts += 1;
+      inFlight = true;
+      try {
+        await queryStatuses([...pending.values()]);
+      } finally {
+        inFlight = false;
+        if (pending.size > 0 && attempts < maxAttempts && !isDocumentHidden()) {
+          scheduleNext(intervalMs);
+        }
+      }
+    }
+
+    function track(tweetId, article, state) {
+      const key = String(tweetId || "");
+      if (!key) return;
+      if (state === "queued" || state === "running") {
+        if (article) pending.set(key, article);
+        attempts = 0;
+        scheduleNext(intervalMs);
+      } else {
+        pending.delete(key);
+        if (pending.size === 0) {
+          clearScheduled();
+        }
+      }
+    }
+
+    function onVisibilityChange() {
+      if (isDocumentHidden()) {
+        clearScheduled();
+      } else if (pending.size > 0 && attempts < maxAttempts) {
+        scheduleNext(0);
+      }
+    }
+
+    function stop() {
+      pending.clear();
+      clearScheduled();
+    }
+
+    return {
+      track,
+      pollOnce,
+      onVisibilityChange,
+      stop,
+      pendingCount: () => pending.size,
+    };
+  }
+
   global.XArchiveContent = {
     parseTweetId,
     parseTweetTarget,
     canonicalTweetUrl,
     primaryTweetLink,
+    createStatusPoller,
     replyLinkFor,
     quoteLinkFor,
     articlesForMutation,

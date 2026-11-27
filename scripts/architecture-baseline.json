@@ -1328,13 +1328,13 @@
     },
     "extension/src/content-core.js": {
       "category": "frontend-source",
-      "lines": 349,
-      "sha256": "962a64e3172eea8da6832e8387678c22cb8ae16b206347ba71ae2f983dd3e23b"
+      "lines": 438,
+      "sha256": "280d6a73939eeaabeb322c99128ee6ced10f5bd8ace2c693ce1af99e0f44dbc1"
     },
     "extension/src/content.js": {
       "category": "frontend-source",
-      "lines": 83,
-      "sha256": "50352007835465cfb1a67c14000d74f2ff8e8d6aaa17d119e738823ca6da7cef"
+      "lines": 104,
+      "sha256": "5c5677bd49a5ae2d45746fccedfa551632ed4c2d24375b1a6553a5db37081f5b"
     },
     "extension/src/websocket-bridge.js": {
       "category": "frontend-source",
@@ -1358,8 +1358,8 @@
     },
     "extension/tests/content.test.js": {
       "category": "frontend-source",
-      "lines": 342,
-      "sha256": "7613aa2c2d1ef8b530848d3db4e341e13543e0da2936fd030d666e5c14781971"
+      "lines": 398,
+      "sha256": "a3bdb75a40db1b3dfdb9519062dc8afbca85b6e8b62466b9992c519c15e544b7"
     },
     "scripts/check-architecture.mjs": {
       "category": "frontend-source",
