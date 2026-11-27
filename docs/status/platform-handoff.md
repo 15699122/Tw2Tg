@@ -1,40 +1,34 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-27, Sidecar `--no-download` / `stdin=DEVNULL` & Extension UI polish on `dev`)
+## Resume summary — authoritative cursor (2026-11-27, Windows `8eff58a4` live Edge + X findings on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**; `CROSS_PLATFORM_CHANGE_REQUIRED`; `WINDOWS_BLOCKING`: none).
 - Branch: **`dev`**.
-- Source baseline: **`b498f8f3`** (`602a78f5` Windows live Edge + X findings).
-- Completed Cross-platform fixes on `dev`:
-  1. **Sidecar `gallery-dl` extraction flag & child `stdin=DEVNULL` ([`gallery_commands.py`](../../sidecar/src/xarchive_downloader/gallery_commands.py), [`extraction.py`](../../sidecar/src/xarchive_downloader/extraction.py), [`process.py`](../../sidecar/src/xarchive_downloader/process.py))**:
-     - Replaced unsupported `--skip-download` with `--no-download` in `build_extraction_command` (matching bundled `gallery-dl 1.32.12`) and added `--no-download` to `build_download_command`'s forbidden extraction-only flags.
-     - Passed `stdin=subprocess.DEVNULL` to `subprocess.Popen` in `ExtractionRunner._run_process` (and `taskkill` `subprocess.run` in `process.py`) so child processes never inherit `xarchive-downloader`'s open JSONL stdin pipe and fail fast on CLI/auth errors instead of hanging until timeout.
-     - Updated [`test_extraction_only.py`](../../sidecar/tests/test_extraction_only.py), [`test_downloader_args.py`](../../sidecar/tests/test_downloader_args.py), and [`test_protocol_v2.py`](../../sidecar/tests/test_protocol_v2.py), adding a real-subprocess test `test_runner_detaches_child_stdin_and_fails_fast_on_cli_error`.
-  2. **Extension options layout & switch alignment ([`extension/options.css`](../../extension/options.css))**:
-     - Added `.switch { display: inline-flex; align-items: center; flex-shrink: 0; }` and `.message:empty { display: none; }` so empty status messages do not add bottom whitespace inside the first card.
-  3. **X tweet `保存` button aligned to desktop tokens ([`extension/src/content-core.js`](../../extension/src/content-core.js), [`extension/tests/content.test.js`](../../extension/tests/content.test.js))**:
-     - Replaced the `999px` green capsule with a `7px`-radius, `26px`-high `inline-flex` neutral button (`1px solid rgba(128,128,128,0.28)`, `rgba(128,128,128,0.06)` resting / `0.14` hover, `color: inherit`) with a `13×13` linear archive SVG icon, reserving `#2e6f59` exclusively for `complete` (`已归档`).
-- Linux validation gates passed on `dev`:
-  - `cargo fmt --all -- --check`: **PASS**
-  - `cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe --offline`: **PASS**
-  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (0 failed across all workspace crates & doctests)
-  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
-  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
-  - `npm --prefix desktop run build`: **PASS**
-  - `npm --prefix extension test`: **PASS** (`58 pass, 0 fail`)
-  - `python3` runtime smoke (`build_extraction_command` `--no-download` + real child `sys.stdin.read()` + rc=2 fast-fail): **PASS** (`pytest` not installed in container `/usr/bin/python3`; full `pytest sidecar/tests` should run on Windows/CI)
-  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
-  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
-- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  - Rebuild `xarchive-downloader.exe` / `xarchive-desktop.exe`, run `python -m pytest sidecar/tests -q`, reload `extension/`, and re-run the live Edge + real X account end-to-end test across **3 real tweets (single photo / multi-photo / single video)** (`Extension -> Desktop -> aria2c.exe`), verifying:
-    1. `gallery-dl.exe` (`1.32.12`) extracts metadata with `--no-download` (no 300s hang) and `aria2c.exe` downloads media to `COMPLETE`;
-    2. `extension/options.html` first card has no empty `#message` bottom gap and `.switch` stays vertically centered;
-    3. X tweet `保存` button renders neutral `7px` radius aligned with the action bar in Light/Dark X themes and switches to `#2e6f59` only on `已归档`.
+- Source baseline: **`8eff58a4`** (Sidecar `--no-download` / `stdin=DEVNULL` & Extension UI polish).
+- Windows release builds verified at `8eff58a4`:
+  - Standard Release `xarchive-desktop.exe`: SHA-256 `4a25e70129ab3ed8bdd6056a33b707c097a86f8a7fa85a5ae7dfa39d88a5334f`.
+  - Sidecar `xarchive-downloader.exe`: SHA-256 `168cfc0112028031115f36c34383fec18e994eab3855d542d1f432f95d8693d5`.
+- Live Edge + real X account test (`target/live-e2e-8eff58a4`):
+  - **PASS (core archiving pipeline & `options.html`)**:
+    - `gallery-dl.exe` (`1.32.12`) with `--no-download` + `stdin=DEVNULL` extracted metadata without 300s hang; `aria2c.exe` downloaded and archived 2 real tweets to `COMPLETE` in 5–6s each (`archive-2126116583437471755-2026-11-27T03:42:28Z` 03:42:28Z→03:42:34Z; `archive-2123437310977163454-2026-11-27T03:43:54Z` 03:43:59Z, 7 photos verified by SHA-256 in `tweet.json`).
+    - `extension/options.html` first card bottom `#message` whitespace & `.switch` vertical centering resolved.
+  - **FAIL (`CROSS_PLATFORM_CHANGE_REQUIRED`)**:
+    1. **Downloaded media files lack file extensions**: `download/Tweets/<id>/` and `tweet.json` save X media as extensionless filenames (e.g. `HXf25EvbUAAcGX2`, `"mime_type": null`) because X `pbs.twimg.com/media/<id>?format=jpg` carries format in query/metadata rather than URL path; Windows Explorer shows generic `文件` without thumbnails or file association.
+    2. **X tweet action-bar status button (`extension/src/content-core.js`)**: `queued` (`排队中`) / status states use neutral resting button styling instead of semantic softened state feedback (`--warning` / status dot), tight vertical padding + thin SVG stroke, asymmetric spacing between X share/download icons, and blurred button (`7px`) vs read-only badge (`999px`) boundary.
+    3. **Desktop Dashboard UI polish (`desktop/src/`)**:
+       - `最近任务`: `archive-<id>-<timestamp> · post` wraps mid-timestamp (`2026-11-`) and duplicates the right-side timestamp; 19-digit Tweet ID in title uses proportional font above monospace subtitle.
+       - Two greens on one screen: main `--success` bright emerald clashes with sidebar `#2e6f59` forest green; secondary caption grey is too light.
+       - `运行环境`: `下载方式 aria2` config row misuses a green health dot; `最近任务` card header duplicates page header `刷新`.
+    4. **`sidecar/tests/test_downloader_args.py` Windows portability**: 3 tests fail on Windows (`75 passed, 26 skipped, 3 failed`) because `Path("/tmp/staging").is_absolute()` is `False` on Windows.
+- Cross-platform Owner next actions:
+  1. Preserve/infer media file extensions (`.jpg`/`.png`/`.mp4` from `gallery-dl` `extension` / URL `?format=` / `Content-Type` / magic bytes) before final publication so Windows Explorer opens and previews archived media cleanly.
+  2. Apply semantic status styling & spacing to `extension/src/content-core.js` (`排队中`/running states vs `7px` action button / `999px` badge) and polish Desktop Dashboard (`最近任务` key wrapping/tabular IDs, unify `--success` to `#2e6f59` palette, neutral dot for `下载方式`, remove duplicate `刷新`).
+  3. Fix `Path("/tmp/staging")` in `sidecar/tests/test_downloader_args.py` to use `tmp_path` or `.resolve()`, commit, push to `origin/dev`, and hand back `READY_FOR_WINDOWS`.
 - `WINDOWS_BLOCKING`: **none**.
 
 ---

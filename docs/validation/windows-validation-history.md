@@ -1,5 +1,22 @@
 # Windows Validation History
 
+## Windows Live Edge + Real X E2E at 8eff58a4 (`CROSS_PLATFORM_CHANGE_REQUIRED`) — 2026-11-27
+
+At input revision `8eff58a4` (Sidecar `--no-download` / `stdin=DEVNULL` & Extension UI polish) on `dev`:
+
+- **Builds & unit checks**:
+  - Standard Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `4a25e70129ab3ed8bdd6056a33b707c097a86f8a7fa85a5ae7dfa39d88a5334f`.
+  - Sidecar `xarchive-downloader.exe` (PyInstaller 6.22.3): **PASS**, SHA-256 `168cfc0112028031115f36c34383fec18e994eab3855d542d1f432f95d8693d5`.
+  - `npm --prefix extension test`: **PASS 58/58** (`fail 0`, `skip 0`).
+  - `python -m pytest sidecar/tests -q`: **75 passed, 26 skipped, 3 failed** (`test_downloader_args.py` passes POSIX `Path("/tmp/staging")` which fails `.is_absolute()` on Windows; all extraction & `stdin=DEVNULL` tests passed).
+- **Live Edge + real X account test** (`target/live-e2e-8eff58a4`):
+  - **PASS**: `gallery-dl.exe` (`1.32.12`) with `--no-download` + `stdin=DEVNULL` completed extraction without 300s hang; `aria2c.exe` downloaded and archived 2 real tweets to `COMPLETE` in 5–6s (`archive-2126116583437471755-2026-11-27T03:42:28Z`, `archive-2123437310977163454-2026-11-27T03:43:54Z` with 7 photos verified in `tweet.json`); `extension/options.html` card spacing & `.switch` alignment resolved.
+  - **FAIL (`CROSS_PLATFORM_CHANGE_REQUIRED`)**:
+    - Downloaded media files in `download/Tweets/<id>/` lack file extensions (`HXf25EvbUAAcGX2`, `"mime_type": null`), appearing as generic `文件` in Windows Explorer.
+    - X tweet action-bar `排队中` button needs semantic status coloring (`--warning` / status dot), clearer SVG stroke & padding, balanced left/right spacing, and clear `7px` button vs `999px` badge boundary.
+    - Desktop Dashboard needs `最近任务` single-line/abbreviated key + `monospace`/`tabular-nums` Tweet ID, unified `#2e6f59` `--success` green (replacing bright emerald), darker secondary grey, neutral dot on `下载方式 aria2`, and removal of duplicate `刷新` button.
+  - Single video (`2124843923462074816`), Telegram end-to-end, and Authenticode signing (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`): **NOT_RUN**.
+
 ## Windows Live Edge + Real X E2E at 602a78f5 (`CROSS_PLATFORM_CHANGE_REQUIRED`) — 2026-11-27
 
 At input revision `602a78f5701422b7b8b90d9796da8b231cee7469` (`602a78f5`, `LockScope::Job` colon fix & Extension options layout polish) on `dev`:
