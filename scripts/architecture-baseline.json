@@ -1328,8 +1328,8 @@
     },
     "extension/src/content-core.js": {
       "category": "frontend-source",
-      "lines": 290,
-      "sha256": "fd6638c6f6b5d0ea468ea4243faa2992859635b2c5c43bf5607906547c5fb214"
+      "lines": 325,
+      "sha256": "7b004a2e62ed6cd25bd879981ccc706a5dea08073be95879c1787e2deb9e9130"
     },
     "extension/src/content.js": {
       "category": "frontend-source",
@@ -1358,8 +1358,8 @@
     },
     "extension/tests/content.test.js": {
       "category": "frontend-source",
-      "lines": 320,
-      "sha256": "b521b312198259d7afaff09c8f7ed58ffa18233fdf47a6a841ba2f916c954444"
+      "lines": 337,
+      "sha256": "13525fe3f3b8c1d644076d3be657cf0b076aa40d89a2ed95540e07dc9ed6f403"
     },
     "scripts/check-architecture.mjs": {
       "category": "frontend-source",
@@ -1403,13 +1403,13 @@
     },
     "sidecar/src/xarchive_downloader/extraction.py": {
       "category": "python-sidecar",
-      "lines": 430,
-      "sha256": "64d04bc3fa105692d5b01f70521d2bf8b69f5489e57f95ccbc0f9efd6eb98dd7"
+      "lines": 431,
+      "sha256": "9dbf96da00ae414862a5c00c5bc37f6ab55bc744475e56ed72b70c7c63c986e5"
     },
     "sidecar/src/xarchive_downloader/gallery_commands.py": {
       "category": "python-sidecar",
       "lines": 175,
-      "sha256": "700ba2105cd6f43d53b6746eb7bfd26ae79642b7c559f57f97c0de43070711a4"
+      "sha256": "de0bcd355130de054eac602d2087d36f4d5756f2aec9ab5c2aa9bed45c66faa7"
     },
     "sidecar/src/xarchive_downloader/gallery_metadata.py": {
       "category": "python-sidecar",
@@ -1423,8 +1423,8 @@
     },
     "sidecar/src/xarchive_downloader/process.py": {
       "category": "python-sidecar",
-      "lines": 86,
-      "sha256": "7e31d142d035d2e3182188bbd8b623c8f891c2b4b0e6c07cc054c5881a47cc75"
+      "lines": 87,
+      "sha256": "db2484c576584de4ffee7e461c88cc1b9cbb9991f7f8c42317df6143dad11f59"
     },
     "sidecar/src/xarchive_downloader/protocol_v2.py": {
       "category": "python-sidecar",

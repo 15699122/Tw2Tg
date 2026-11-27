@@ -93,7 +93,8 @@ def test_extraction_command_is_extraction_only() -> None:
     command = build_extraction_command(
         ExtractionConfig(executable="gallery-dl"), "https://x.com/a/status/123"
     )
-    assert "--skip-download" in command
+    assert "--no-download" in command
+    assert "--skip-download" not in command
     assert "--directory" not in command
     assert command[-1] == "https://x.com/a/status/123"
 
@@ -804,7 +805,7 @@ def test_build_download_command_targets_staging_and_drops_metadata_only_flags(
     assert "--write-info-json" in command
     assert "--cookies-from-browser" in command
     assert command[-1] == "https://x.com/alice/status/123"
-    for forbidden in ("--skip-download", "--dump-json", "--simulate"):
+    for forbidden in ("--no-download", "--skip-download", "--dump-json", "--simulate"):
         assert forbidden not in command
     with pytest.raises(GalleryDlError) as failure:
         build_download_command(

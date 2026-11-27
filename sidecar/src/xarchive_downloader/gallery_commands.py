@@ -93,7 +93,7 @@ def build_extraction_command(config: ExtractionConfig, url: str) -> list[str]:
         "--config-ignore",
         "--no-input",
         "--quiet",
-        "--skip-download",
+        "--no-download",
         "--write-info-json",
         "--dump-json",
         "-o",
@@ -164,7 +164,7 @@ def build_download_command(
     command.append(url)
     # A download command must never carry the metadata-only or simulation
     # flags: they would keep gallery-dl from writing media bytes into staging.
-    forbidden = {"--skip-download", "--dump-json", "--resolve-json", "--simulate"}
+    forbidden = {"--no-download", "--skip-download", "--dump-json", "--resolve-json", "--simulate"}
     leaked = forbidden.intersection(command)
     if leaked:
         raise GalleryDlError(

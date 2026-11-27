@@ -285,16 +285,23 @@ test("updates button state and accessibility attributes", () => {
   assert.equal(attributes.get("aria-label"), "XArchive：归档中");
 });
 
-test("createArchiveButton uses desktop neutral + forest green theme tokens", () => {
+test("createArchiveButton uses desktop neutral 7px idle style and reserves #2e6f59 for complete", () => {
   const attributes = new Map();
   const appended = [];
-  const createdButton = {
+  const makeNode = () => ({
     type: "",
     dataset: {},
     style: { cssText: "" },
+    children: [],
     setAttribute(name, value) { attributes.set(name, value); },
+    append(...nodes) { this.children.push(...nodes); },
+    querySelector(selector) {
+      if (selector === "[data-xarchive-label]") return this.children[1] || null;
+      return null;
+    },
     addEventListener() {},
-  };
+  });
+  let createdButton = null;
   const articleAttrs = new Map();
   const article = {
     hasAttribute: () => false,
@@ -311,10 +318,20 @@ test("createArchiveButton uses desktop neutral + forest green theme tokens", () 
     querySelectorAll: () => [],
     textContent: "fixture tweet",
   };
-  const doc = { createElement: () => createdButton };
+  const doc = {
+    createElement: (tag) => {
+      const node = makeNode();
+      if (tag === "button" && !createdButton) createdButton = node;
+      return node;
+    },
+  };
   const button = createArchiveButton(article, () => {}, doc);
   assert.equal(button, createdButton);
   assert.equal(appended.length, 1);
-  assert.match(createdButton.style.cssText, /#2e6f59/);
-  assert.doesNotMatch(createdButton.style.cssText, /#1b2a1b|#c6f277/);
+  assert.match(createdButton.style.cssText, /border-radius:7px/);
+  assert.doesNotMatch(createdButton.style.cssText, /999px|#2e6f59|#1b2a1b|#c6f277/);
+  assert.notEqual(createdButton.style.color, "#2e6f59");
+  setArchiveButtonState(createdButton, "complete");
+  assert.equal(createdButton.style.color, "#2e6f59");
+  assert.equal(createdButton.children[1].textContent, "已归档");
 });

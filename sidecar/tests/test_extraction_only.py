@@ -99,7 +99,8 @@ def test_extraction_command_never_contains_media_download_flags() -> None:
         ExtractionConfig(executable="gallery-dl", browser="firefox", profile="default"),
         "https://x.com/a/status/123",
     )
-    assert "--skip-download" in command
+    assert "--no-download" in command
+    assert "--skip-download" not in command
     assert "--write-info-json" in command
     assert "--dump-json" in command
     assert "output.jsonl=true" in command
@@ -190,3 +191,33 @@ def test_runner_maps_auth_failure_without_download_fallback(
     with pytest.raises(GalleryDlError) as excinfo:
         runner.run("https://x.com/a/status/123", tmp_path / "w", emit=lambda event: None)
     assert excinfo.value.code == "AUTH_REQUIRED"
+
+
+def test_runner_detaches_child_stdin_and_fails_fast_on_cli_error(
+    tmp_path: Path,
+) -> None:
+    import time
+
+    script = tmp_path / "stdin-reading-fail"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "_ = sys.stdin.read()\n"
+        "print('gallery-dl: error: unrecognized arguments: --bogus', file=sys.stderr)\n"
+        "sys.exit(2)\n",
+        encoding="utf-8",
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    runner = ExtractionRunner(
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(script),),
+            timeout_seconds=10.0,
+        )
+    )
+    started = time.monotonic()
+    with pytest.raises(GalleryDlError) as excinfo:
+        runner.run("https://x.com/a/status/123", tmp_path / "w")
+    elapsed = time.monotonic() - started
+    assert elapsed < 3.0
+    assert "unrecognized arguments" in excinfo.value.message

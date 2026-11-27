@@ -69,6 +69,7 @@ def _signal_tree(process: subprocess.Popen, *, force: bool) -> None:
     if os.name == "nt":
         subprocess.run(
             ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             check=False,

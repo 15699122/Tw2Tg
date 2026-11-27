@@ -200,6 +200,25 @@
     return "failed";
   }
 
+  function applyArchiveButtonAppearance(button, state, hovered) {
+    if (!button?.style) return;
+    if (state === "complete") {
+      button.style.borderColor = "#2e6f59";
+      button.style.color = "#2e6f59";
+      button.style.background = "rgba(46,111,89,0.10)";
+      return;
+    }
+    if (state === "failed" || state === "disconnected" || state === "auth_required") {
+      button.style.borderColor = "rgba(180,35,24,0.35)";
+      button.style.color = "#b42318";
+      button.style.background = hovered ? "rgba(180,35,24,0.10)" : "rgba(180,35,24,0.05)";
+      return;
+    }
+    button.style.borderColor = hovered ? "rgba(128,128,128,0.42)" : "rgba(128,128,128,0.28)";
+    button.style.color = "inherit";
+    button.style.background = hovered ? "rgba(128,128,128,0.14)" : "rgba(128,128,128,0.06)";
+  }
+
   function setArchiveButtonState(button, state) {
     if (!button) return;
     const labels = {
@@ -213,12 +232,19 @@
       failed: "重试",
       disconnected: "重试",
     };
+    const text = labels[state] || labels.failed;
     const disabled = ["checking", "submitting", "queued", "running", "complete"].includes(state);
     button.dataset.xarchiveState = state;
     button.disabled = disabled;
     button.setAttribute("aria-busy", String(["checking", "submitting", "running"].includes(state)));
-    button.setAttribute("aria-label", `XArchive：${labels[state] || labels.failed}`);
-    button.textContent = labels[state] || labels.failed;
+    button.setAttribute("aria-label", `XArchive：${text}`);
+    const labelNode = button.querySelector?.("[data-xarchive-label]");
+    if (labelNode) {
+      labelNode.textContent = text;
+    } else {
+      button.textContent = text;
+    }
+    applyArchiveButtonAppearance(button, state, false);
   }
 
   function applyArchiveStatus(button, status) {
@@ -235,8 +261,17 @@
     const button = documentRef.createElement("button");
     button.type = "button";
     button.setAttribute(BUTTON_ATTRIBUTE, tweet.tweet_id);
+    button.style.cssText = "margin-left:8px;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border:1px solid rgba(128,128,128,0.28);border-radius:7px;color:inherit;background:rgba(128,128,128,0.06);cursor:pointer;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;vertical-align:middle;transition:background-color .15s ease,border-color .15s ease";
+    const icon = documentRef.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.style.cssText = "display:inline-flex;align-items:center";
+    icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>';
+    const label = documentRef.createElement("span");
+    label.setAttribute("data-xarchive-label", "true");
+    button.append?.(icon, label);
     setArchiveButtonState(button, "idle");
-    button.style.cssText = "margin-left:8px;border:1px solid rgba(46,111,89,0.45);border-radius:999px;padding:4px 10px;color:#2e6f59;background:rgba(46,111,89,0.10);cursor:pointer;font:600 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+    button.addEventListener("mouseenter", () => applyArchiveButtonAppearance(button, button.dataset.xarchiveState || "idle", true));
+    button.addEventListener("mouseleave", () => applyArchiveButtonAppearance(button, button.dataset.xarchiveState || "idle", false));
     button.addEventListener("click", () => onArchive(tweet, button));
     const toolbar = article.querySelector?.('[role="group"]') || article;
     toolbar.append(button);

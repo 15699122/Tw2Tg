@@ -32,7 +32,7 @@ def test_executable_args_are_passed_as_argv_not_shell():
         "--config-ignore",
         "--no-input",
         "--quiet",
-        "--skip-download",
+        "--no-download",
         "--write-info-json",
         "--dump-json",
         "-o",

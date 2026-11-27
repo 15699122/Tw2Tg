@@ -149,6 +149,7 @@ class ExtractionRunner:
                 process = subprocess.Popen(
                     command,
                     cwd=work_dir,
+                    stdin=subprocess.DEVNULL,
                     stdout=output_file,
                     stderr=error_file,
                     text=True,
@@ -194,7 +195,7 @@ class ExtractionRunner:
 class DiscoveryRunner:
     """Account discovery: enumerate durable Tweet candidates for one profile.
 
-    gallery-dl still runs extraction-only (``--skip-download``); the workspace
+    gallery-dl still runs extraction-only (``--no-download``); the workspace
     is purged first so only files produced by this invocation are scanned, and
     every candidate is identity/shape validated before it is emitted.
     """
