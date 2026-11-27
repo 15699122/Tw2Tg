@@ -1,38 +1,27 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-26, `LockScope::Job` colon fix & Extension options layout polish on `dev`)
+## Resume summary — authoritative cursor (2026-11-27, Windows `602a78f5` live Edge + X findings on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**; `CROSS_PLATFORM_CHANGE_REQUIRED`; `WINDOWS_BLOCKING`: none).
 - Branch: **`dev`**.
-- Source baseline: **`0c7a21796f9d6ce7c4291f82fc2dae68f3ef3497`** (`0c7a2179`, Windows `0f27d39b` live Edge + X findings).
-- Completed Cross-platform fixes on `dev`:
-  1. **`LockScope::Job` lock path supports ISO-8601 `:` timestamps ([`crates/xarchive-workflow/src/coordination.rs`](../../crates/xarchive-workflow/src/coordination.rs))**:
-     - Updated `lock_file_path` so `LockScope::Job(job_id)` rejects blank names and hashes `format!("job:{job_id}")` with `digest_name` (matching `LockScope::Destination` while preventing job/destination scope collisions).
-     - Added regression unit test `lock_file_path_accepts_iso8601_colons_in_job_ids_without_colliding` covering `archive-2125900602010206383-2026-11-26T11:40:59Z`.
-  2. **Extension options layout & troubleshooting note polish ([`extension/options.css`](../../extension/options.css), [`options.html`](../../extension/options.html), [`options.js`](../../extension/options.js))**:
-     - Aligned `.card` to flat desktop tokens (`border-radius: 10px`, `1px solid #e5e5e5`, no `box-shadow`).
-     - Added `4px` gap between `h2` and `.card-heading p` subtitle.
-     - Added `1px solid #f0f0f0` top separator, `min-height: 38px`, and `line-height: 1.45` to `.state-line` rows.
-     - Hides `#connection-help` (`连接失败时请确认…`) when `websocket.state === "connected"` and hides empty `#connection-error` notes.
-- Linux validation gates passed on `dev`:
-  - `cargo fmt --all -- --check`: **PASS**
-  - `cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe --offline`: **PASS**
-  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (0 failed across all workspace crates & doctests)
-  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
-  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
-  - `npm --prefix desktop run build`: **PASS**
-  - `npm --prefix extension test`: **PASS** (`58 pass, 0 fail`)
-  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
-  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
-- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  - Rebuild `xarchive-desktop.exe` and reload `extension/` on `dev`, then re-run the live Edge + real X account end-to-end test across **3 real tweets (single photo / multi-photo / single video)** (`Extension -> Desktop -> aria2c.exe`), verifying:
-    1. Browser-submitted ISO-8601 jobs acquire coordination scopes, claim attempts, download media via `aria2c.exe`, and reach `COMPLETE`;
-    2. `extension/options.html` cards are flat `10px` radius with `1px solid #e5e5e5`, clean `h2`/subtitle gap, separated `当前状态` rows, and hidden troubleshooting note while WebSocket is authenticated.
+- Source baseline: **`602a78f5701422b7b8b90d9796da8b231cee7469`** (`602a78f5`, `LockScope::Job` colon fix & Extension options layout polish).
+- Windows release build verified at `602a78f5`:
+  - Standard Release `xarchive-desktop.exe`: SHA-256 `43e24abced57004f51ffe368eafef5316aa389491f6ad993f9e0d94ee6dce34b`.
+- Live Edge + real X account test (`target/live-e2e-602a78f5`, `43e24abc...`, tweet `2125606699356635170`):
+  - **PASS**: `LockScope::Job` ISO-8601 `:` fix worked (`archive-2125606699356635170-2026-11-27T02:05:06Z` progressed `QUEUED -> VALIDATING -> METADATA_READY -> DOWNLOADING`); sidebar `Extension` green `已连接`; `extension/options.html` flat `10px` card border (`1px solid #e5e5e5`), separated `当前状态` rows, and hidden troubleshooting note while WebSocket authenticated (`已认证 · 54559`).
+  - **FAIL (`CROSS_PLATFORM_CHANGE_REQUIRED`)**:
+    1. **Sidecar `gallery-dl` extraction failure & 300s hang**: `archive-2125606699356635170-2026-11-27T02:05:06Z` stalled in `DOWNLOADING` for 300s (`02:05:06Z` -> `02:10:06Z`) and failed `EXECUTOR_WORKER_FAILED` (`DOWNLOAD_TIMEOUT: gallery-dl timed out`, 0 files in `cache/staging` and `download/`). Direct invocation of bundled `gallery-dl.exe` (`1.32.12`) with `sidecar/src/xarchive_downloader/gallery_commands.py` (`build_extraction_command`) fails immediately (`rc: 2`) with `gallery-dl.exe: error: unrecognized arguments: --skip-download` (`gallery-dl 1.32.12` supports `--no-download` / `-s, --simulate`, not `--skip-download`). Also investigate why `gallery-dl.exe` stayed alive for 300s when spawned by `xarchive-downloader.exe` instead of failing fast.
+    2. **`extension/options.html` / `options.css` layout**: empty `<p class="message" id="message">` keeps `min-height: 20px; margin: 12px 0 0;` (missing `:empty { display: none; }`), leaving excessive bottom whitespace inside the first card; `.switch` should ensure `flex-shrink: 0; display: inline-flex; align-items: center;`.
+    3. **X tweet `保存` button (`extension/src/content-core.js`)**: line 239 still injects `border-radius: 999px` capsule pill, `padding: 4px 10px` (taller than X action-bar icons, misaligned baseline, inconsistent height vs reply bar), and green `rgba(46,111,89,0.10)` / `#2e6f59` styling in the `idle` state. Change to `7px` radius, neutral greyscale idle styling matching the desktop design system (`#171717` / `1px solid #e5e5e5` / theme-matched, compact height aligned with X action-bar icons, optional linear archive SVG icon), and reserve `#2e6f59` for `complete` (`已归档`).
+- Cross-platform Owner next actions:
+  1. Fix `sidecar/src/xarchive_downloader/gallery_commands.py` (`--skip-download` -> `--no-download` or `--simulate`, plus tests and fast-fail child process handling if `stdin`/pipe inheritance caused the 300s hang).
+  2. Polish `extension/options.css` (`.message:empty { display: none; }`, `.switch` alignment) and `extension/src/content-core.js` (`7px` radius, neutral idle button, aligned height/baseline, linear icon).
+  3. Commit, push to `origin/dev`, and hand back `READY_FOR_WINDOWS`.
 - `WINDOWS_BLOCKING`: **none**.
 
 ---

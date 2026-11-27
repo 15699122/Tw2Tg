@@ -1,5 +1,21 @@
 # Windows Validation History
 
+## Windows Live Edge + Real X E2E at 602a78f5 (`CROSS_PLATFORM_CHANGE_REQUIRED`) — 2026-11-27
+
+At input revision `602a78f5701422b7b8b90d9796da8b231cee7469` (`602a78f5`, `LockScope::Job` colon fix & Extension options layout polish) on `dev`:
+
+- **Builds & unit checks**:
+  - Standard Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `43e24abced57004f51ffe368eafef5316aa389491f6ad993f9e0d94ee6dce34b`.
+  - `cargo test -p xarchive-workflow lock_file_path_accepts_iso8601_colons_in_job_ids_without_colliding --quiet`: **PASS 1/1**.
+  - `npm --prefix extension test`: **PASS 58/58** (`fail 0`, `skip 0`).
+- **Live Edge + real X account test** (`target/live-e2e-602a78f5`, `43e24abc...`, tweet `https://x.com/midudev/status/2125606699356635170`):
+  - **PASS**: `LockScope::Job` ISO-8601 `:` fix worked (`archive-2125606699356635170-2026-11-27T02:05:06Z` progressed `QUEUED -> VALIDATING -> METADATA_READY -> DOWNLOADING`); sidebar `Extension` showed green `已连接`; `extension/options.html` showed flat `10px` cards (`1px solid #e5e5e5`), separated `当前状态` rows, and hidden troubleshooting note while WebSocket was authenticated (`已认证 · 54559`).
+  - **FAIL (`CROSS_PLATFORM_CHANGE_REQUIRED`)**:
+    - Job `archive-2125606699356635170-2026-11-27T02:05:06Z` stalled 300s in `DOWNLOADING` (`02:05:06Z` -> `02:10:06Z`) and failed `EXECUTOR_WORKER_FAILED`: `job execution error [ARCHIVE_DOWNLOAD_FAILED]: DOWNLOAD_TIMEOUT: gallery-dl timed out`, with 0 files in `cache/staging` and `download/`. Direct invocation of bundled `sidecar/gallery-dl/gallery-dl.exe` (`1.32.12`) with `build_extraction_command` (`sidecar/src/xarchive_downloader/gallery_commands.py`) failed immediately (`rc: 2`) with `gallery-dl.exe: error: unrecognized arguments: --skip-download` (`gallery-dl 1.32.12` supports `--no-download` / `-s, --simulate`, not `--skip-download`).
+    - `extension/options.css` keeps `min-height: 20px; margin: 12px 0 0;` on empty `#message`, leaving excessive bottom whitespace inside the first card.
+    - `extension/src/content-core.js` line 239 tweet `保存` button still uses `999px` capsule pill, tall padding (`4px 10px`), and green `rgba(46,111,89,0.10)` / `#2e6f59` styling in the `idle` state instead of `7px` neutral desktop styling aligned with X action-bar icons.
+  - Multi-photo (`2123437310977163454`), single-video (`2124843923462074816`), Telegram end-to-end, and Authenticode signing (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`): **NOT_RUN**.
+
 ## Windows Phase 2.1 `aria2-only` & Core Bootstrap `.dependency-missing` at 976e03f1 — 2026-11-26
 
 At input revision `976e03f199c1f3f7c95bd4fb4fc14c636ed1d408` (`976e03f1`, Phase 2.1 `aria2-only` convergence + `fda4b7ff` `ComponentManager::from_root`) on `dev`:
