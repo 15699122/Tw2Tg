@@ -1,43 +1,30 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-27, media extension/MIME completion, tweet button states & Dashboard UI polish on `dev`)
+## Resume summary — authoritative cursor (2026-11-27, Windows `785b288e` live Edge + X findings on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
 
 ### Cursor
 
-- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `WINDOWS_BLOCKING`: none).
+- Owner: Windows Platform Owner → Cross-platform Owner (**`READY_FOR_CROSS_PLATFORM`**; `CROSS_PLATFORM_CHANGE_REQUIRED`; `WINDOWS_BLOCKING`: none).
 - Branch: **`dev`**.
-- Source baseline: **`f36f54ac`** (`8eff58a4` Windows live Edge + X findings; multi-photo tweet archived in 5–6s to `COMPLETE`).
-- Completed Cross-platform fixes on `dev`:
-  1. **Media file extension & `mime_type` completion ([`gallery_metadata.py`](../../sidecar/src/xarchive_downloader/gallery_metadata.py), [`transfer.rs`](../../desktop/src-tauri/src/production/transfer.rs), [`test_extraction_only.py`](../../sidecar/tests/test_extraction_only.py))**:
-     - Sidecar `to_extraction_result` now infers normalized extensions (`jpg`/`png`/`webp`/`gif`/`mp4`/`webm`/`mov`) and `mime_type` from `gallery-dl` `extension`, `filename` suffix, URL `?format=` query parameter, URL path suffix, or `mime_type`, appending `.{ext}` to extensionless names like `HXf25EvbUAAcGX2`.
-     - Rust `transfer_files` adds defense-in-depth `sniff_media_magic` (JPEG/PNG/GIF/WebP/MP4) to rename extensionless staging files and populate `mime_type` when absent.
-  2. **X tweet action bar status button & spacing ([`extension/src/content-core.js`](../../extension/src/content-core.js), [`extension/tests/content.test.js`](../../extension/tests/content.test.js))**:
-     - Added semantic status dot (`data-xarchive-dot`) and `--warning` softened amber styling (`#9a5b00` / `rgba(154,91,0,0.12)`) for in-progress states (`checking`/`submitting`/`queued`/`running`), keeping `idle` neutral (`7px` radius) and `complete` (`已归档`) `#2e6f59`, with balanced `margin: 0 4px 0 8px`, `height: 28px`, `padding: 2px 9px`, and crisp `stroke-width="2"` SVG icon.
-  3. **Desktop Dashboard UI & color token polish ([`dashboard-page.jsx`](../../desktop/src/pages/dashboard-page.jsx), [`shared.jsx`](../../desktop/src/pages/shared.jsx), [`style.css`](../../desktop/src/style.css))**:
-     - Unified `--success` to `#2e6f59` (`--success-surface: #eaf4f0`, dark `#3f9077` / `#1d3a31`) and deepened light `--foreground-muted` to `#5c5c5c`.
-     - `最近任务` `JobRow`: uses `tabular-nums` monospace `.job-tweet-id`, single-line ellipsized `{job.job_id} · {job.tweet_type}` subtitle, and removes the duplicate card-header `刷新` button.
-     - `运行环境` `下载方式 aria2`: switched from green `data-tone="ok"` to neutral `data-tone="neutral"`.
-  4. **Sidecar Windows path compatibility ([`test_downloader_args.py`](../../sidecar/tests/test_downloader_args.py))**:
-     - Replaced hardcoded `Path("/tmp/staging")` with pytest `tmp_path` across all 3 failing tests so `.is_absolute()` passes on Windows.
-- Linux validation gates passed on `dev`:
-  - `cargo fmt --all -- --check`: **PASS**
-  - `cargo build -p xarchive-workflow --bin xarchive-lock-probe --features __lock_probe --offline`: **PASS**
-  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (0 failed across all workspace crates & doctests)
-  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
-  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
-  - `npm --prefix desktop run build`: **PASS**
-  - `npm --prefix extension test`: **PASS** (`58 pass, 0 fail`)
-  - `python3` Sidecar extension/MIME smoke (`HXf25EvbUAAcGX2.jpg` / `image/jpeg`, `?format=png` -> `.png` / `image/png`, `.mp4` -> `video/mp4`): **PASS** (`pytest` not installed in container `/usr/bin/python3`; full `pytest sidecar/tests` should run on Windows)
-  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
-  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
-- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
-  - Run `python -m pytest sidecar/tests -q` (confirming `test_downloader_args.py` passes on Windows), rebuild `xarchive-downloader.exe` & `xarchive-desktop.exe`, reload `extension/`, and re-verify:
-    1. Live Edge + real X tweets (single photo / multi-photo / single video) archive with `.jpg`/`.png`/`.mp4` file extensions and non-null `mime_type` in `tweet.json` and Explorer thumbnails;
-    2. X tweet `queued`/`running`/`complete` button states & spacing in Light/Dark X themes;
-    3. Desktop Dashboard unified `#2e6f59` `--success`, single-line `JobRow` subtitle + `tabular-nums` tweet ID, neutral `下载方式 aria2` dot, and single page-header `刷新` button.
+- Source baseline: **`785b288e325abef72f3ee8dbd765e90c0fdc5cc2`** (`785b288e`, media extension/MIME completion, tweet button states & Dashboard UI polish).
+- Windows release builds & tests verified at `785b288e`:
+  - Standard Release `xarchive-desktop.exe`: SHA-256 `9417479bc7f0e22adfd5a96d77cd7d24e52954d888ece5503570152fbe1b519d`.
+  - Sidecar `xarchive-downloader.exe`: SHA-256 `663742e86391923dcf0d8ac3126f922d4ac4a5723a5ba40a0ef65129829044b7`.
+  - `python -m pytest sidecar/tests -q`: **PASS** (`79 passed, 26 skipped, 0 failed` — `test_downloader_args.py` & `test_extraction_only.py` all passed on Windows).
+  - `npm --prefix extension test`: **PASS** (`58 passed, 0 failed`).
+- Live Edge + real X account test (`target/live-e2e-785b288e`):
+  - **PASS**:
+    - Media file extension & MIME completion verified end-to-end: `archive-2125853813256986653-2026-11-27T05:08:45Z` completed in 5s (`05:08:45Z -> 05:08:50Z`), saving `HYA5ZOMbUAAAJzF.jpg` (`115475` bytes) with `"mime_type": "image/jpeg"` in `tweet.json` and Explorer preview working.
+    - Tweet action bar `idle` (`保存`) & `queued` (`● 排队中`, amber pill + status dot) styling & spacing verified clean.
+    - Desktop `--success` green unified with sidebar `#2e6f59`.
+  - **FAIL (`CROSS_PLATFORM_CHANGE_REQUIRED`)**:
+    1. **Browser button stays stuck on `● 排队中` after job reaches `COMPLETE`**: In `extension/src/content.js`, `onArchive` calls `applyArchiveStatus(button, response)` once on `archive_request` (`QUEUED`) and `onArticles` calls `query_status` once on DOM insertion, with **no periodic `query_status` polling** for `queued`/`running` buttons and **no WebSocket-to-tab push forwarding** from `background.js`. As a result, after Desktop finishes archiving (`COMPLETE`), the X page button remains on `● 排队中` until manual page refresh.
+- Cross-platform Owner next actions:
+  1. Add bounded `query_status` polling (e.g. while any mounted tweet button is in `queued`/`running`, stopping once terminal `complete`/`failed`/`auth_required` or hidden/disconnected) and/or forward Desktop status push updates to active X tabs so buttons transition from `● 排队中` -> `归档中` -> `已归档` (`#2e6f59`) automatically without page reload.
+  2. Commit, push to `origin/dev`, and hand back `READY_FOR_WINDOWS` (remaining live checks: multi-photo/single-video `785b288e+` re-check, Dashboard `最近任务` visual re-check, Telegram E2E, Authenticode signing).
 - `WINDOWS_BLOCKING`: **none**.
 
 ---

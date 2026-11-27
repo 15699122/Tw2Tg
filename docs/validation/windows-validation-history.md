@@ -1,5 +1,19 @@
 # Windows Validation History
 
+## Windows Live Edge + Real X E2E at 785b288e (`CROSS_PLATFORM_CHANGE_REQUIRED`) — 2026-11-27
+
+At input revision `785b288e325abef72f3ee8dbd765e90c0fdc5cc2` (`785b288e`, media extension/MIME completion, tweet button states & Dashboard UI polish) on `dev`:
+
+- **Builds & unit checks**:
+  - Standard Windows Release `xarchive-desktop.exe` (`npm --prefix desktop run build:tauri`): **PASS**, SHA-256 `9417479bc7f0e22adfd5a96d77cd7d24e52954d888ece5503570152fbe1b519d`.
+  - Sidecar `xarchive-downloader.exe` (PyInstaller 6.22.3): **PASS**, SHA-256 `663742e86391923dcf0d8ac3126f922d4ac4a5723a5ba40a0ef65129829044b7`.
+  - `python -m pytest sidecar/tests -q`: **PASS** (`79 passed, 26 skipped, 0 failed`).
+  - `npm --prefix extension test`: **PASS 58/58** (`fail 0`, `skip 0`).
+- **Live Edge + real X account test** (`target/live-e2e-785b288e`):
+  - **PASS**: `archive-2125853813256986653-2026-11-27T05:08:45Z` completed in 5s (`05:08:45Z -> 05:08:50Z`), writing `HYA5ZOMbUAAAJzF.jpg` (`115475` bytes) with `"mime_type": "image/jpeg"` in `tweet.json`; X `idle`/`queued` button styling (`● 排队中`) and unified `#2e6f59` `--success` green verified.
+  - **FAIL (`CROSS_PLATFORM_CHANGE_REQUIRED`)**: `extension/src/content.js` lacks `query_status` polling or push forwarding for `queued`/`running` buttons after `archive_request` returns `QUEUED`, so the browser button stays on `● 排队中` after Desktop finishes `COMPLETE`.
+  - Multi-photo (`2123437310977163454`), single video (`2124843923462074816`), Telegram end-to-end, and Authenticode signing (`Cert:\CurrentUser\My -CodeSigningCert` count = `0`): **NOT_RUN**.
+
 ## Windows Live Edge + Real X E2E at 8eff58a4 (`CROSS_PLATFORM_CHANGE_REQUIRED`) — 2026-11-27
 
 At input revision `8eff58a4` (Sidecar `--no-download` / `stdin=DEVNULL` & Extension UI polish) on `dev`:
