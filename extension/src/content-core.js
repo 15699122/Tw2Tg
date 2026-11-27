@@ -202,21 +202,41 @@
 
   function applyArchiveButtonAppearance(button, state, hovered) {
     if (!button?.style) return;
+    const dot = button.querySelector?.("[data-xarchive-dot]");
     if (state === "complete") {
       button.style.borderColor = "#2e6f59";
       button.style.color = "#2e6f59";
       button.style.background = "rgba(46,111,89,0.10)";
+      if (dot?.style) {
+        dot.style.display = "inline-block";
+        dot.style.background = "#2e6f59";
+      }
+      return;
+    }
+    if (["checking", "submitting", "queued", "running"].includes(state)) {
+      button.style.borderColor = "rgba(154,91,0,0.40)";
+      button.style.color = "#9a5b00";
+      button.style.background = "rgba(154,91,0,0.12)";
+      if (dot?.style) {
+        dot.style.display = "inline-block";
+        dot.style.background = "#9a5b00";
+      }
       return;
     }
     if (state === "failed" || state === "disconnected" || state === "auth_required") {
       button.style.borderColor = "rgba(180,35,24,0.35)";
       button.style.color = "#b42318";
       button.style.background = hovered ? "rgba(180,35,24,0.10)" : "rgba(180,35,24,0.05)";
+      if (dot?.style) {
+        dot.style.display = "inline-block";
+        dot.style.background = "#b42318";
+      }
       return;
     }
     button.style.borderColor = hovered ? "rgba(128,128,128,0.42)" : "rgba(128,128,128,0.28)";
     button.style.color = "inherit";
     button.style.background = hovered ? "rgba(128,128,128,0.14)" : "rgba(128,128,128,0.06)";
+    if (dot?.style) dot.style.display = "none";
   }
 
   function setArchiveButtonState(button, state) {
@@ -261,14 +281,18 @@
     const button = documentRef.createElement("button");
     button.type = "button";
     button.setAttribute(BUTTON_ATTRIBUTE, tweet.tweet_id);
-    button.style.cssText = "margin-left:8px;display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 8px;border:1px solid rgba(128,128,128,0.28);border-radius:7px;color:inherit;background:rgba(128,128,128,0.06);cursor:pointer;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;vertical-align:middle;transition:background-color .15s ease,border-color .15s ease";
+    button.style.cssText = "margin:0 4px 0 8px;display:inline-flex;align-items:center;gap:5px;height:28px;padding:2px 9px;border:1px solid rgba(128,128,128,0.28);border-radius:7px;color:inherit;background:rgba(128,128,128,0.06);cursor:pointer;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;vertical-align:middle;transition:background-color .15s ease,border-color .15s ease";
     const icon = documentRef.createElement("span");
     icon.setAttribute("aria-hidden", "true");
     icon.style.cssText = "display:inline-flex;align-items:center";
-    icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>';
+    icon.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>';
+    const dot = documentRef.createElement("span");
+    dot.setAttribute("data-xarchive-dot", "true");
+    dot.setAttribute("aria-hidden", "true");
+    dot.style.cssText = "display:none;width:6px;height:6px;border-radius:50%;flex:none";
     const label = documentRef.createElement("span");
     label.setAttribute("data-xarchive-label", "true");
-    button.append?.(icon, label);
+    button.append?.(icon, dot, label);
     setArchiveButtonState(button, "idle");
     button.addEventListener("mouseenter", () => applyArchiveButtonAppearance(button, button.dataset.xarchiveState || "idle", true));
     button.addEventListener("mouseleave", () => applyArchiveButtonAppearance(button, button.dataset.xarchiveState || "idle", false));

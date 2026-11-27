@@ -154,15 +154,15 @@ def test_runner_returns_metadata_without_downloaded_file_facts(
                 "media_type": "photo",
                 "url": "https://pbs.twimg.com/media/abc.jpg",
                 "filename": "_evil___sh\u00e6lle name.jpg",
-                "mime_type": None,
+                "mime_type": "image/jpeg",
             },
             {
                 "index": 2,
                 "media_id": "def.jpg",
                 "media_type": "video",
                 "url": "https://pbs.twimg.com/media/def.jpg?format=jpg&name=orig",
-                "filename": "02.bin",
-                "mime_type": None,
+                "filename": "02.jpg",
+                "mime_type": "image/jpeg",
             },
         ],
         "request_headers": [
@@ -221,3 +221,36 @@ def test_runner_detaches_child_stdin_and_fails_fast_on_cli_error(
     elapsed = time.monotonic() - started
     assert elapsed < 3.0
     assert "unrecognized arguments" in excinfo.value.message
+
+
+def test_to_extraction_result_completes_extension_and_mime_for_x_media() -> None:
+    from xarchive_downloader.models import normalize_metadata
+    from xarchive_downloader.gallery_metadata import to_extraction_result
+
+    tweet = normalize_metadata(
+        {
+            "tweet_id": "2125606699356635170",
+            "url": "https://x.com/alice/status/2125606699356635170",
+            "media": [
+                {
+                    "media_id": "HXf25EvbUAAcGX2",
+                    "type": "photo",
+                    "filename": "HXf25EvbUAAcGX2",
+                    "extension": "jpg",
+                    "url": "https://pbs.twimg.com/media/HXf25EvbUAAcGX2?format=jpg&name=orig",
+                },
+                {
+                    "media_id": "HXf25EvbUAAcGX3",
+                    "type": "photo",
+                    "filename": "HXf25EvbUAAcGX3",
+                    "url": "https://pbs.twimg.com/media/HXf25EvbUAAcGX3?format=png&name=orig",
+                },
+            ],
+        },
+        "https://x.com/alice/status/2125606699356635170",
+    )
+    result = to_extraction_result(tweet, tweet.url)
+    assert result.media[0].filename == "HXf25EvbUAAcGX2.jpg"
+    assert result.media[0].mime_type == "image/jpeg"
+    assert result.media[1].filename == "HXf25EvbUAAcGX3.png"
+    assert result.media[1].mime_type == "image/png"

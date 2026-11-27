@@ -43,11 +43,11 @@ def test_executable_args_are_passed_as_argv_not_shell():
     ]
 
 
-def test_user_args_remain_task_scoped_argv_entries():
+def test_user_args_remain_task_scoped_argv_entries(tmp_path):
     user_args = ("--limit-rate", "2M", "value with spaces; $HOME")
     config = ExtractionConfig(executable="gallery-dl")
     command = build_download_command(
-        config, "https://x.com/tweet/1", Path("/tmp/staging"), user_args
+        config, "https://x.com/tweet/1", tmp_path / "staging", user_args
     )
     start = command.index("--limit-rate")
     assert command[start : start + len(user_args)] == list(user_args)
@@ -137,22 +137,23 @@ def test_download_runner_spawn_receives_task_args_as_distinct_argv_entries(
     assert actual[-1] == "https://x.com/alice/status/1"
 
 
-def test_user_args_cannot_displace_application_owned_download_destination():
+def test_user_args_cannot_displace_application_owned_download_destination(tmp_path):
     # Rejecting application-owned options is the Rust policy boundary's job. This
     # is defence in depth: the application flag is emitted after the task
     # entries, so a task-supplied --directory stays an earlier duplicate value
     # rather than replacing the staging destination.
+    staging = tmp_path / "staging"
     config = ExtractionConfig(executable="gallery-dl")
     command = build_download_command(
         config,
         "https://x.com/tweet/1",
-        Path("/tmp/staging"),
+        staging,
         ("--directory", "/attacker"),
     )
     first = command.index("--directory")
     second = command.index("--directory", first + 1)
     assert command[first + 1] == "/attacker"
-    assert command[second + 1] == "/tmp/staging"
+    assert command[second + 1] == str(staging)
 
 
 def test_user_args_do_not_change_extraction_command():
@@ -161,12 +162,13 @@ def test_user_args_do_not_change_extraction_command():
     assert "--limit-rate" not in command
 
 
-def test_download_command_does_not_use_shell_metacharacters():
+def test_download_command_does_not_use_shell_metacharacters(tmp_path):
+    staging = tmp_path / "staging"
     config = ExtractionConfig(
         executable="gallery-dl",
-        executable_args=("--directory", "/tmp/staging"),
+        executable_args=("--directory", str(staging)),
     )
-    command = build_download_command(config, "https://x.com/tweet/1", Path("/tmp/staging"))
+    command = build_download_command(config, "https://x.com/tweet/1", staging)
     assert "|" not in command
     assert ">" not in command
     assert "&&" not in command

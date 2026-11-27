@@ -296,7 +296,8 @@ test("createArchiveButton uses desktop neutral 7px idle style and reserves #2e6f
     setAttribute(name, value) { attributes.set(name, value); },
     append(...nodes) { this.children.push(...nodes); },
     querySelector(selector) {
-      if (selector === "[data-xarchive-label]") return this.children[1] || null;
+      if (selector === "[data-xarchive-label]") return this.children[2] || null;
+      if (selector === "[data-xarchive-dot]") return this.children[1] || null;
       return null;
     },
     addEventListener() {},
@@ -331,7 +332,11 @@ test("createArchiveButton uses desktop neutral 7px idle style and reserves #2e6f
   assert.match(createdButton.style.cssText, /border-radius:7px/);
   assert.doesNotMatch(createdButton.style.cssText, /999px|#2e6f59|#1b2a1b|#c6f277/);
   assert.notEqual(createdButton.style.color, "#2e6f59");
+  setArchiveButtonState(createdButton, "queued");
+  assert.equal(createdButton.style.color, "#9a5b00");
+  assert.equal(createdButton.children[1].style.display, "inline-block");
+  assert.equal(createdButton.children[2].textContent, "排队中");
   setArchiveButtonState(createdButton, "complete");
   assert.equal(createdButton.style.color, "#2e6f59");
-  assert.equal(createdButton.children[1].textContent, "已归档");
+  assert.equal(createdButton.children[2].textContent, "已归档");
 });

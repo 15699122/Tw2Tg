@@ -542,14 +542,86 @@ fn transfer_files(
                 path.display()
             ));
         }
+        let (relative, mime_type) = ensure_media_extension_and_mime(
+            staging_dir,
+            &path,
+            relative,
+            item.mime_type.as_deref(),
+        )?;
         files.push(xarchive_protocol::DownloadFile {
             relative_path: relative.to_string_lossy().to_string(),
             size_bytes: metadata.len(),
             media_type: item.media_type.clone(),
-            mime_type: item.mime_type.clone(),
+            mime_type,
         });
     }
     Ok(files)
+}
+
+fn ensure_media_extension_and_mime(
+    staging_dir: &Path,
+    path: &Path,
+    relative: &Path,
+    existing_mime: Option<&str>,
+) -> Result<(PathBuf, Option<String>), String> {
+    let sniffed = sniff_media_magic(path);
+    let current_ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase);
+    let mut final_relative = relative.to_path_buf();
+    if current_ext.is_none()
+        && let Some((ext, _)) = sniffed
+    {
+        let mut renamed_relative = relative.to_path_buf();
+        renamed_relative.set_extension(ext);
+        let renamed_path = staging_dir.join(&renamed_relative);
+        if !renamed_path.exists() {
+            std::fs::rename(path, &renamed_path)
+                .map_err(|error| format!("failed to add media extension: {error}"))?;
+            final_relative = renamed_relative;
+        }
+    }
+    let mime = existing_mime.map(str::to_owned).or_else(|| {
+        sniffed
+            .map(|(_, mime)| mime.to_owned())
+            .or_else(|| mime_for_extension(current_ext.as_deref()))
+    });
+    Ok((final_relative, mime))
+}
+
+fn sniff_media_magic(path: &Path) -> Option<(&'static str, &'static str)> {
+    use std::io::Read as _;
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut header = [0u8; 16];
+    let read = file.read(&mut header).ok()?;
+    let bytes = &header[..read];
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some(("jpg", "image/jpeg"))
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some(("png", "image/png"))
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some(("gif", "image/gif"))
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some(("webp", "image/webp"))
+    } else if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
+        Some(("mp4", "video/mp4"))
+    } else {
+        None
+    }
+}
+
+fn mime_for_extension(ext: Option<&str>) -> Option<String> {
+    match ext {
+        Some("jpg" | "jpeg") => Some("image/jpeg".to_owned()),
+        Some("png") => Some("image/png".to_owned()),
+        Some("gif") => Some("image/gif".to_owned()),
+        Some("webp") => Some("image/webp".to_owned()),
+        Some("mp4" | "m4v") => Some("video/mp4".to_owned()),
+        Some("webm") => Some("video/webm".to_owned()),
+        Some("mov") => Some("video/quicktime".to_owned()),
+        _ => None,
+    }
 }
 
 pub(super) fn extraction_to_metadata(result: &ExtractionResult) -> serde_json::Value {

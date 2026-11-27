@@ -9,8 +9,11 @@ downloads media bytes and holds no cancellation or timeout state; those stay in
 from __future__ import annotations
 
 import json
+import mimetypes
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from .errors import GalleryDlError
 from .protocol_v2 import (
@@ -234,10 +237,71 @@ def stable_media_id(item: Any, position: int) -> str:
     return f"media-{position:02d}"
 
 
+_EXT_TO_MIME: dict[str, str] = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "gif": "image/gif",
+    "mp4": "video/mp4",
+    "m4v": "video/mp4",
+    "webm": "video/webm",
+    "mov": "video/quicktime",
+}
+
+
+def _normalize_ext(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    ext = str(raw).strip().lstrip(".").lower()
+    if not ext or not ext.isalnum() or len(ext) > 10:
+        return None
+    if ext in {"jpeg", "jpe"}:
+        return "jpg"
+    if ext == "qt":
+        return "mov"
+    return ext
+
+
+def _infer_extension_and_mime(item: Any) -> tuple[str | None, str | None]:
+    meta = getattr(item, "metadata", None)
+    ext = _normalize_ext(meta.get("extension")) if isinstance(meta, dict) else None
+    if not ext and getattr(item, "filename", None):
+        ext = _normalize_ext(Path(str(item.filename)).suffix)
+    if not ext and getattr(item, "url", None):
+        parsed = urlsplit(str(item.url))
+        fmt = parse_qs(parsed.query).get("format")
+        if fmt:
+            ext = _normalize_ext(fmt[0])
+        if not ext:
+            ext = _normalize_ext(Path(parsed.path).suffix)
+    mime = getattr(item, "mime_type", None)
+    if not ext and mime:
+        ext = _normalize_ext(mimetypes.guess_extension(str(mime)))
+    if not mime and ext:
+        mime = _EXT_TO_MIME.get(ext) or mimetypes.guess_type(f"media.{ext}")[0]
+    return ext, mime
+
+
+def _filename_with_extension(raw: str | None, position: int, ext: str | None) -> str:
+    base = sanitize_filename(raw, position)
+    if not ext:
+        return base
+    if base == f"{position:02d}.bin":
+        return f"{position:02d}.{ext}"
+    if Path(base).suffix:
+        return base
+    candidate = f"{base}.{ext}"
+    if len(candidate) <= 128 and is_safe_filename(candidate):
+        return candidate
+    return f"{position:02d}.{ext}"
+
+
 def to_extraction_result(tweet: Any, fallback_url: str) -> ExtractionResult:
     """Convert normalized metadata into durable extraction-only data."""
     media: list[ExtractionMediaItem] = []
     for position, item in enumerate(tweet.media, 1):
+        ext, mime = _infer_extension_and_mime(item)
         media.append(
             ExtractionMediaItem(
                 index=position,
@@ -246,8 +310,8 @@ def to_extraction_result(tweet: Any, fallback_url: str) -> ExtractionResult:
                 if item.media_type in {"photo", "video"}
                 else "unknown",
                 url=item.url,
-                filename=sanitize_filename(item.filename, position),
-                mime_type=item.mime_type,
+                filename=_filename_with_extension(item.filename, position, ext),
+                mime_type=mime,
             )
         )
 

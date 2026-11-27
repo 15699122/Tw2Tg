@@ -1008,8 +1008,8 @@
     },
     "desktop/src-tauri/src/production/transfer.rs": {
       "category": "rust-desktop",
-      "lines": 594,
-      "sha256": "cde6a795c09b57796d8a46a8f543213ce63313febc65e920e0e82eaf2c1e0648"
+      "lines": 666,
+      "sha256": "2a0ae5d5666d899e6ae64035021758ae6e79552e539afd7c190838a04434bbaa"
     },
     "desktop/src-tauri/src/production_transfer_fixture.rs": {
       "category": "rust-desktop",
@@ -1269,7 +1269,7 @@
     "desktop/src/pages/dashboard-page.jsx": {
       "category": "frontend-source",
       "lines": 8,
-      "sha256": "1dee5c82c1e025ca7c7b9cad630e6537eb073474d53d304eb9d8aa886a5384c6"
+      "sha256": "76444de5047f653f9f4ae335ba72806d53c21a0fd4bbe550b084bf61fc89ba73"
     },
     "desktop/src/pages/download-config-page.jsx": {
       "category": "frontend-source",
@@ -1299,7 +1299,7 @@
     "desktop/src/pages/shared.jsx": {
       "category": "frontend-source",
       "lines": 18,
-      "sha256": "6f06342fbc40bbf76d6b56edc1365e80a391c409e7d79e1fc33a4e219b0f83b6"
+      "sha256": "cff8b32378b6404f57784b2d1e83d4cc2a4f1e4a056c251f47cafdc7e15dfa74"
     },
     "desktop/src/pages/storage-page.jsx": {
       "category": "frontend-source",
@@ -1328,8 +1328,8 @@
     },
     "extension/src/content-core.js": {
       "category": "frontend-source",
-      "lines": 325,
-      "sha256": "7b004a2e62ed6cd25bd879981ccc706a5dea08073be95879c1787e2deb9e9130"
+      "lines": 349,
+      "sha256": "962a64e3172eea8da6832e8387678c22cb8ae16b206347ba71ae2f983dd3e23b"
     },
     "extension/src/content.js": {
       "category": "frontend-source",
@@ -1358,8 +1358,8 @@
     },
     "extension/tests/content.test.js": {
       "category": "frontend-source",
-      "lines": 337,
-      "sha256": "13525fe3f3b8c1d644076d3be657cf0b076aa40d89a2ed95540e07dc9ed6f403"
+      "lines": 342,
+      "sha256": "7613aa2c2d1ef8b530848d3db4e341e13543e0da2936fd030d666e5c14781971"
     },
     "scripts/check-architecture.mjs": {
       "category": "frontend-source",
@@ -1413,8 +1413,8 @@
     },
     "sidecar/src/xarchive_downloader/gallery_metadata.py": {
       "category": "python-sidecar",
-      "lines": 322,
-      "sha256": "aef26fbd52908667d10fd5bb02472ce501fb97fac7731d1c9e6925a9dbfb8af3"
+      "lines": 386,
+      "sha256": "ba4f05428db9923889a8dc00f60d96de48bd2d53e764b05b5f1261256d530845"
     },
     "sidecar/src/xarchive_downloader/models.py": {
       "category": "python-sidecar",
