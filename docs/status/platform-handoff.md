@@ -1,9 +1,49 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-27, Extension active-job polling on `dev`)
+## Resume summary — authoritative cursor (2026-11-27, Hybrid Architecture Hardening Phase 1–3 on `dev`)
 
 > Start here. Everything below this section is retained history and its state claims
 > are not current.
+
+### Cursor
+
+- Owner: Cross-platform Owner → Windows Platform Owner (**`READY_FOR_WINDOWS`**; `CROSS_PLATFORM_CHANGE_REQUIRED` / `CROSS_PLATFORM_REVIEW_REQUIRED` batch; `WINDOWS_BLOCKING`: none).
+- Branch: **`dev`**.
+- Source baseline: **`a51988c7a5ead86e531842452324630e947e7388`** (`a51988c7`, Phase 1–3 hybrid architecture hardening on top of `16818c37`).
+- Completed Cross-platform batch on `dev` (see [`../review/hybrid-architecture-audit-2026-11-27.md`](../review/hybrid-architecture-audit-2026-11-27.md) & [`../development/roadmap.md`](../development/roadmap.md) §7):
+  1. **Phase 1 (`T1.1`–`T1.4`, Protocol v2 & UTF-8/tempdir safety)**:
+     - [`gallery_metadata.py`](../../sidecar/src/xarchive_downloader/gallery_metadata.py): fixed `media_type_for_filename` missing `return "unknown"` and removed dead trailing return; added regression test in [`test_extraction_only.py`](../../sidecar/tests/test_extraction_only.py).
+     - [`worker_v2.py`](../../sidecar/src/xarchive_downloader/worker_v2.py): replaced hardcoded `Path("/tmp/xarchive-v2")` in `handle_extract` with `tempfile.TemporaryDirectory(prefix="xarchive-v2-extract-")`; added `MAX_COMMAND_LINE_BYTES` (1 MiB) bounded stdin reader and `UnicodeDecodeError` handling (`INVALID_ENCODING` / `INVALID_COMMAND`) without crashing the reader thread.
+     - [`__init__.py`](../../sidecar/src/xarchive_downloader/__init__.py) & [`xarchive-sidecar-supervisor/src/lib.rs`](../../crates/xarchive-sidecar-supervisor/src/lib.rs): injected `PYTHONUTF8=1` and `PYTHONIOENCODING=utf-8` across all Sidecar spawn paths and reconfigured stdio to UTF-8 on startup.
+     - [`sidecar-v2-event.schema.json`](../../shared/protocol-schema/sidecar-v2-event.schema.json), [`sidecar_v2.rs`](../../crates/xarchive-protocol/src/sidecar_v2.rs), & [`protocol_v2.py`](../../sidecar/src/xarchive_downloader/protocol_v2.py): raised `text` / `quoted_tweet.text` limit to `32768` chars, added optional `result` to `$defs.download_result` (keeping `download` until post-`v0.2.1`), and aligned Python `extract_tweet_id` strict URL identity validation with Rust.
+  2. **Phase 2 (`T2.1`–`T2.3`, Containment, orphan cleanup & discovery streaming)**:
+     - [`crates/xarchive-sidecar-supervisor/src/lib.rs`](../../crates/xarchive-sidecar-supervisor/src/lib.rs): `SidecarSupervisor::shutdown()` now sends cooperative `shutdown` + closes stdin + waits up to 600ms before signaling the process group/tree (preserving descendant group cleanup even after parent exit, plus Windows `taskkill /PID ... /T /F` fallback).
+     - [`windows_containment.rs`](../../crates/xarchive-workflow/src/windows_containment.rs) & [`xarchive-sidecar-supervisor/src/lib.rs`](../../crates/xarchive-sidecar-supervisor/src/lib.rs): added `AnonymousProcessJob` (`KILL_ON_JOB_CLOSE`) and attached it to `SidecarSupervisor::spawn_with_environment` on `#[cfg(windows)]` so `spawn_account_batch` and `start_sidecar` cannot orphan `xarchive-downloader.exe` / `gallery-dl.exe` on abnormal exit.
+     - [`extraction.py`](../../sidecar/src/xarchive_downloader/extraction.py): `DiscoveryRunner.run` switched from full `gallery-dl.jsonl` re-read ($O(N^2)$ at `83.4 ms/call` for 5k lines) to incremental byte-offset `jsonl_offset` streaming.
+  3. **Phase 3 (`T3.1`–`T3.3`, Tooling, capabilities & docs convergence)**:
+     - [`sidecar/pyproject.toml`](../../sidecar/pyproject.toml) & [`.gitignore`](../../.gitignore): added `[tool.mypy]`, `dev` extras, and `.mypy_cache/`.
+     - [`desktop/src-tauri/capabilities/default.json`](../../desktop/src-tauri/capabilities/default.json): removed unused `"shell:default"` and debug-only `"mcp-bridge:default"` from production default capability (`["core:default", "dialog:default"]`).
+     - [`README.md`](../../README.md), [`overview.md`](../architecture/overview.md), [`status.md`](../development/status.md), & [`architecture-baseline.json`](../../scripts/architecture-baseline.json): aligned docs with enforced production `aria2-only` (`use_aria2 = true`) and resealed architecture baseline.
+- Linux validation gates passed on `dev`:
+  - `cargo fmt --all -- --check`: **PASS**
+  - `cargo clippy --workspace --all-targets --offline -- -D warnings`: **PASS**
+  - `cargo test --workspace --no-fail-fast --offline`: **PASS** (`0 failed`)
+  - `.venv/bin/pytest sidecar/tests -q`: **PASS** (`109 passed`)
+  - `npm --prefix extension test`: **PASS**
+  - `npm --prefix desktop test`: **PASS** (`285 tests: 282 pass, 0 fail, 3 Windows-only skipped`)
+  - `node scripts/check-architecture.mjs`: **PASS** (`287 files, 0 findings`)
+  - `node scripts/docs-audit.mjs` & `git diff --check`: **PASS**
+- Windows Platform Owner next actions (see [Windows queue](../validation/windows-queue.md) & [Windows validation history](../validation/windows-validation-history.md)):
+  1. Pull latest `dev` after commit/push, run `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p xarchive-workflow -p xarchive-sidecar-supervisor -p xarchive-desktop --lib`, and `python -m pytest sidecar/tests -q` (verifying `#[cfg(windows)]` `AnonymousProcessJob` and `taskkill` fallback).
+  2. Rebuild Release `xarchive-desktop.exe` and PyInstaller `xarchive-downloader.exe` (recording SHA-256), and verify:
+     - `T1.2`/`T1.3`: Extraction on a non-`C:` drive / non-ASCII Windows path creates no `\tmp\xarchive-v2` and handles UTF-8 JSONL cleanly under Windows code page;
+     - `T2.1`/`T2.2`: `stop_sidecar` and killing `xarchive-desktop.exe` during account batch discovery leave 0 `xarchive-downloader.exe` / `gallery-dl.exe` orphans;
+     - `T3.2` + `T4.1`: Production capability (`core:default`, `dialog:default`), live Edge + X polling (`● 排队中` → `● 归档中` → `● 已归档`), multi-photo (`2123437310977163454`), single video (`2124843923462074816`), Credential Manager + Telegram E2E, and Authenticode status.
+- `WINDOWS_BLOCKING`: **none**.
+
+---
+
+## Previous Cursor — 2026-11-27, Extension active-job polling on `dev`
 
 ### Cursor
 

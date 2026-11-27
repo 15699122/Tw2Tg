@@ -1,4 +1,14 @@
-## Current Windows queue — 2026-11-26
+## Current Windows queue — 2026-11-27
+
+Owner: Windows Platform Owner (`READY_FOR_WINDOWS`). Branch: `dev`. Input revision: `a51988c7a5ead86e531842452324630e947e7388` (`a51988c7`, Hybrid Architecture Hardening Phase 1–3 batch; see [platform-handoff.md](../status/platform-handoff.md) & [hybrid-architecture-audit-2026-11-27.md](../review/hybrid-architecture-audit-2026-11-27.md)).
+
+### New Phase 1–3 Windows verification items (2026-11-27)
+- `T2.2` / `AnonymousProcessJob` (`#[cfg(windows)]`): `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test -p xarchive-workflow -p xarchive-sidecar-supervisor` on Windows MSVC; verify `stop_sidecar` and terminating `xarchive-desktop.exe` during `spawn_account_batch` leaves 0 `xarchive-downloader.exe` / `gallery-dl.exe` orphans.
+- `T1.2` / `T1.3`: Verify PyInstaller `xarchive-downloader.exe` extraction on non-`C:` drive creates no `\tmp\xarchive-v2` directory and handles UTF-8 JSONL / non-ASCII paths cleanly on Windows.
+- `T3.2`: Verify Release `xarchive-desktop.exe` with trimmed `capabilities/default.json` (`["core:default", "dialog:default"]`) still opens folders, dialogs, and clipboard cleanly.
+- `T4.1`: Rebuild Release `xarchive-desktop.exe` + `xarchive-downloader.exe` and complete live Edge + X polling (`● 排队中` → `● 归档中` → `● 已归档`), multi-photo (`2123437310977163454`), single video (`2124843923462074816`), Credential Manager + real Telegram send E2E, and Authenticode status.
+
+## Prior Windows batch — 2026-11-26
 
 Owner: Windows Platform Owner (`WINDOWS_BATCH_CLOSED`). Branch: `dev`. Validated input revision: `976e03f199c1f3f7c95bd4fb4fc14c636ed1d408` (`976e03f1`, Phase 2.1 `aria2-only` convergence + `fda4b7ff` `ComponentManager::from_root`). Results are recorded in [Windows validation history](windows-validation-history.md).
 
