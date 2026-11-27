@@ -915,3 +915,96 @@ def test_handle_v2_command_rejects_download_without_staging_dir() -> None:
     event = events_from(output.getvalue())[0]
     assert event["error_code"] == "INVALID_COMMAND"
     assert event["error_message"] == "staging_dir is required"
+
+
+def test_handle_extract_uses_isolated_temp_dir_and_cleans_up() -> None:
+    seen_dirs: list[Path] = []
+    output = io.StringIO()
+
+    class RecordingRunner:
+        def __init__(self, config):
+            del config
+
+        def run(self, url, work_dir, emit, is_cancelled=None, on_tick=None):
+            del url, emit, is_cancelled, on_tick
+            seen_dirs.append(work_dir)
+            assert work_dir.exists()
+            assert "xarchive-v2-extract-" in work_dir.name
+            (work_dir / "marker.txt").write_text("ok", encoding="utf-8")
+            return sample_result()
+
+    handle_v2_command(
+        {
+            "protocol_version": 2,
+            "request_id": "r-temp",
+            "cmd": "extract",
+            "job_id": "job-temp",
+            "url": "https://x.com/alice/status/123",
+        },
+        output,
+        control=ExtractionControl(),
+        drain=lambda: None,
+        runner_factory=RecordingRunner,
+    )
+    assert len(seen_dirs) == 1
+    assert not seen_dirs[0].exists()
+
+
+def test_worker_handles_non_utf8_and_oversized_command_lines() -> None:
+    class BinaryStdin:
+        def __init__(self, raw: bytes) -> None:
+            self.buffer = io.BytesIO(raw)
+
+    raw_input = (
+        b"\xff\xfe\n"
+        + (b"x" * (1024 * 1024 + 32))
+        + b"\n"
+        + b'{"protocol_version":2,"request_id":"r1","cmd":"hello","job_id":"system"}\n'
+    )
+    output = io.StringIO()
+    run_v2_worker(BinaryStdin(raw_input), output)
+    events = events_from(output.getvalue())
+    assert [e["event"] for e in events] == ["failed", "failed", "ready"]
+    assert events[0]["error_code"] == "INVALID_ENCODING"
+    assert events[1]["error_code"] == "INVALID_COMMAND"
+    assert events[2]["request_id"] == "r1"
+
+
+def test_protocol_v2_schema_and_text_limit_alignment() -> None:
+    import jsonschema
+
+    schema_path = (
+        Path(__file__).resolve().parents[2]
+        / "shared"
+        / "protocol-schema"
+        / "sidecar-v2-event.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+
+    long_result = replace(sample_result(), text="a" * 25000)
+    assert validate_extraction_result(long_result) is None
+    event_payload = {
+        "protocol_version": 2,
+        "event": "extracted",
+        "job_id": "job-1",
+        "request_id": "r1",
+        "result": extraction_result_to_json(long_result),
+    }
+    jsonschema.validate(instance=event_payload, schema=schema)
+
+    too_long = replace(sample_result(), text="a" * 32769)
+    assert validate_extraction_result(too_long) == "extraction result text is too long"
+
+    spoofed_url = replace(
+        sample_result(), url="https://evil.example/https://x.com/alice/status/123"
+    )
+    assert validate_extraction_result(spoofed_url) == "request/job identity mismatch"
+
+    download_with_result = {
+        **download_result_to_json(sample_download()),
+        "result": extraction_result_to_json(sample_result()),
+    }
+    jsonschema.validate(
+        instance=download_with_result,
+        schema={"$defs": schema["$defs"], "$ref": "#/$defs/download_result"},
+    )

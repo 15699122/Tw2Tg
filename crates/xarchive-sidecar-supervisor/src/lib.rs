@@ -47,12 +47,32 @@ impl From<&[(String, String)]> for ChildProcessEnvironment {
     }
 }
 
+fn with_utf8_environment(set: &[(String, String)]) -> Vec<(String, String)> {
+    let mut merged = Vec::with_capacity(set.len() + 2);
+    if !set
+        .iter()
+        .any(|(key, _)| key.eq_ignore_ascii_case("PYTHONUTF8"))
+    {
+        merged.push(("PYTHONUTF8".to_owned(), "1".to_owned()));
+    }
+    if !set
+        .iter()
+        .any(|(key, _)| key.eq_ignore_ascii_case("PYTHONIOENCODING"))
+    {
+        merged.push(("PYTHONIOENCODING".to_owned(), "utf-8".to_owned()));
+    }
+    merged.extend(set.iter().cloned());
+    merged
+}
+
 pub struct SidecarSupervisor {
     child: Option<Child>,
     #[cfg(target_os = "linux")]
     containment: Option<xarchive_workflow::linux_containment::LinuxContainment>,
     #[cfg(windows)]
     windows_containment: Option<xarchive_workflow::windows_containment::WindowsWriterJob>,
+    #[cfg(windows)]
+    anonymous_job: Option<xarchive_workflow::windows_containment::AnonymousProcessJob>,
     stdin: Option<Box<dyn Write + Send>>,
     events: Receiver<SupervisorEvent>,
     readers: Vec<thread::JoinHandle<()>>,
@@ -96,14 +116,9 @@ impl SidecarSupervisor {
                     .filter(|key| xarchive_core::is_proxy_environment_key(key)),
             );
         }
-        let pipes = owner.spawn_piped_with_environment(
-            python,
-            launcher,
-            program,
-            args,
-            &environment.set,
-            &remove,
-        );
+        let set = with_utf8_environment(&environment.set);
+        let pipes =
+            owner.spawn_piped_with_environment(python, launcher, program, args, &set, &remove);
         let (stdin, stdout, stderr) = match pipes {
             Ok(pipes) => pipes,
             Err(error) => {
@@ -153,9 +168,10 @@ impl SidecarSupervisor {
                     .filter(|key| xarchive_core::is_proxy_environment_key(key)),
             );
         }
-        let pipes = owner.start_desktop_keeper().and_then(|()| {
-            owner.spawn_piped_with_environment(program, args, &environment.set, &remove)
-        });
+        let set = with_utf8_environment(&environment.set);
+        let pipes = owner
+            .start_desktop_keeper()
+            .and_then(|()| owner.spawn_piped_with_environment(program, args, &set, &remove));
         let (stdin, stdout, stderr) = match pipes {
             Ok(pipes) => pipes,
             Err(error) => {
@@ -163,6 +179,7 @@ impl SidecarSupervisor {
                 let mut supervisor = Self {
                     child: None,
                     windows_containment: Some(owner),
+                    anonymous_job: None,
                     stdin: None,
                     events,
                     readers: Vec::new(),
@@ -184,6 +201,7 @@ impl SidecarSupervisor {
         Ok(Self {
             child: None,
             windows_containment: Some(owner),
+            anonymous_job: None,
             stdin: Some(Box::new(stdin)),
             events,
             readers,
@@ -214,10 +232,9 @@ impl SidecarSupervisor {
     ) -> Result<Self, SupervisorError> {
         let mut command = Command::new(program);
         hide_console_window(&mut command);
+        let set = with_utf8_environment(&environment.set);
         command.args(args).envs(
-            environment
-                .set
-                .iter()
+            set.iter()
                 .map(|(key, value)| (key.as_str(), value.as_str())),
         );
         for key in &environment.remove {
@@ -242,6 +259,18 @@ impl SidecarSupervisor {
 
         configure_process_group(&mut command);
         let mut child = command.spawn().map_err(SupervisorError::Spawn)?;
+        #[cfg(windows)]
+        let anonymous_job = {
+            let job =
+                xarchive_workflow::windows_containment::AnonymousProcessJob::create_kill_on_close()
+                    .map_err(SupervisorError::Spawn)?;
+            if let Err(error) = job.assign_pid(child.id()) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(SupervisorError::Spawn(error));
+            }
+            Some(job)
+        };
         let stdin = child.stdin.take().ok_or_else(|| {
             SupervisorError::Spawn(io::Error::other("sidecar stdin was not piped"))
         })?;
@@ -264,6 +293,8 @@ impl SidecarSupervisor {
             containment: None,
             #[cfg(windows)]
             windows_containment: None,
+            #[cfg(windows)]
+            anonymous_job,
             stdin: Some(Box::new(stdin)),
             events,
             readers,
@@ -504,6 +535,9 @@ impl SidecarSupervisor {
     /// This reports local process/reader cleanup only; it does not prove that
     /// descendants escaped from the process group have exited.
     pub fn shutdown(&mut self) -> Result<(), SupervisorError> {
+        if self.child.is_some() && self.stdin.is_some() {
+            let _ = self.send_v2_shutdown("supervisor-shutdown");
+        }
         self.close_stdin();
         let mut failures = Vec::new();
         #[cfg(target_os = "linux")]
@@ -524,10 +558,45 @@ impl SidecarSupervisor {
             }
         }
         if let Some(mut child) = self.child.take() {
+            // Allow the Python worker a brief grace window to run its own
+            // `terminate_tree` cleanup on detached descendants before forcing.
+            let grace_deadline = std::time::Instant::now() + Duration::from_millis(600);
+            let mut exited = false;
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => {
+                        exited = true;
+                        break;
+                    }
+                    Ok(None) => {
+                        if std::time::Instant::now() >= grace_deadline {
+                            break;
+                        }
+                        thread::sleep(Duration::from_millis(15));
+                    }
+                    Err(error) => {
+                        failures.push(format!("poll Sidecar process: {error}"));
+                        break;
+                    }
+                }
+            }
+            if !exited {
+                #[cfg(windows)]
+                if let Some(job) = self.anonymous_job.as_ref() {
+                    let _ = job.terminate();
+                }
+            }
+            // Always signal the process group / tree even when the direct
+            // child has already exited, so orphaned descendants in the group
+            // are still reclaimed.
             terminate_process_tree(&mut child);
-            if let Err(error) = child.wait() {
+            if !exited && let Err(error) = child.wait() {
                 failures.push(format!("wait for Sidecar process: {error}"));
             }
+        }
+        #[cfg(windows)]
+        {
+            self.anonymous_job = None;
         }
         // Readers remain owned even when a descendant retains a pipe. Never
         // block shutdown indefinitely on a writer outside the process group.
@@ -626,6 +695,17 @@ fn terminate_process_tree(child: &mut Child) {
         let _ = kill(process_group, Signal::SIGTERM);
         thread::sleep(Duration::from_millis(25));
         let _ = kill(process_group, Signal::SIGKILL);
+    }
+    #[cfg(windows)]
+    {
+        let mut taskkill = Command::new("taskkill");
+        hide_console_window(&mut taskkill);
+        let _ = taskkill
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
     let _ = child.kill();
 }
@@ -762,6 +842,18 @@ mod tests {
             owner.retry_cleanup(),
             Ok(SupervisorError::HandshakeFailed(message)) if message == "fixture ready failure"
         ));
+    }
+
+    #[test]
+    fn with_utf8_environment_injects_defaults_and_respects_overrides() {
+        let base = with_utf8_environment(&[]);
+        assert!(base.contains(&("PYTHONUTF8".to_owned(), "1".to_owned())));
+        assert!(base.contains(&("PYTHONIOENCODING".to_owned(), "utf-8".to_owned())));
+
+        let custom = with_utf8_environment(&[("PYTHONUTF8".to_owned(), "0".to_owned())]);
+        assert_eq!(custom.iter().filter(|(k, _)| k == "PYTHONUTF8").count(), 1);
+        assert!(custom.contains(&("PYTHONUTF8".to_owned(), "0".to_owned())));
+        assert!(custom.contains(&("PYTHONIOENCODING".to_owned(), "utf-8".to_owned())));
     }
 
     #[test]

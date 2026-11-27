@@ -168,7 +168,7 @@
     },
     "crates/xarchive-protocol/src/sidecar_v2.rs": {
       "category": "rust-library",
-      "lines": 1148,
+      "lines": 1160,
       "sha256": "9e62ca30818475d9ca346d511e89b808417efc4757402a213f34ffdc1eb50494"
     },
     "crates/xarchive-protocol/src/sidecar_v2/tests/discovery.rs": {
@@ -183,7 +183,7 @@
     },
     "crates/xarchive-protocol/src/sidecar_v2/tests/extract.rs": {
       "category": "rust-library",
-      "lines": 27,
+      "lines": 35,
       "sha256": "c68c360f6f52b1e18a09794f71916c993c858fb2329f43c146c7f99f6d7a12ed"
     },
     "crates/xarchive-protocol/src/sidecar_v2/tests/fixtures.rs": {
@@ -193,7 +193,7 @@
     },
     "crates/xarchive-protocol/src/sidecar_v2/tests/rejection.rs": {
       "category": "rust-library",
-      "lines": 66,
+      "lines": 79,
       "sha256": "29fc2aee88dd98e92b6fdb9e28544ef363febe233097a7a7b055c71aea39aa15"
     },
     "crates/xarchive-sidecar-supervisor/src/error.rs": {
@@ -208,7 +208,7 @@
     },
     "crates/xarchive-sidecar-supervisor/src/lib.rs": {
       "category": "rust-library",
-      "lines": 898,
+      "lines": 990,
       "sha256": "e87159047cdcea9a4ab84bf7757efacd8e12d396f8aaa36ce9f40445f4cdfabd"
     },
     "crates/xarchive-sidecar-supervisor/src/readers.rs": {
@@ -643,7 +643,7 @@
     },
     "crates/xarchive-workflow/src/windows_containment.rs": {
       "category": "rust-library",
-      "lines": 1422,
+      "lines": 1451,
       "sha256": "f4b0c6e392c5e34d67ea8bc936541232e902d9b8196c7cae492bf7fc26b5a62b"
     },
     "crates/xarchive-workflow/src/windows_filesystem.rs": {
@@ -1383,7 +1383,7 @@
     },
     "sidecar/src/xarchive_downloader/__init__.py": {
       "category": "python-sidecar",
-      "lines": 75,
+      "lines": 90,
       "sha256": "9e85239132aa1d47dbf357f381f73a7f74d0d1b7a0e5ec9a6077cd0b134956f6"
     },
     "sidecar/src/xarchive_downloader/__main__.py": {
@@ -1403,7 +1403,7 @@
     },
     "sidecar/src/xarchive_downloader/extraction.py": {
       "category": "python-sidecar",
-      "lines": 431,
+      "lines": 455,
       "sha256": "9dbf96da00ae414862a5c00c5bc37f6ab55bc744475e56ed72b70c7c63c986e5"
     },
     "sidecar/src/xarchive_downloader/gallery_commands.py": {
@@ -1428,12 +1428,12 @@
     },
     "sidecar/src/xarchive_downloader/protocol_v2.py": {
       "category": "python-sidecar",
-      "lines": 485,
+      "lines": 517,
       "sha256": "285762519f9e292057fcc748659a19dde1c3d5a0d2d86270935ab6af5cf14fe4"
     },
     "sidecar/src/xarchive_downloader/worker_v2.py": {
       "category": "python-sidecar",
-      "lines": 671,
+      "lines": 733,
       "sha256": "636ed06f2df09c84dfa1adcd796caaf1899a94173bad080118154f47f67c263c"
     }
   }

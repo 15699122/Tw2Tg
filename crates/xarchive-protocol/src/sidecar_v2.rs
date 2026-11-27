@@ -732,6 +732,8 @@ impl SidecarV2Event {
     }
 }
 
+pub const MAX_TWEET_TEXT_CHARS: usize = 32_768;
+
 impl ExtractionResult {
     pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.tweet_id.is_empty()
@@ -745,6 +747,11 @@ impl ExtractionResult {
         }
         if !matches!(self.tweet_type.as_str(), "post" | "reply" | "quote") {
             return Err(ProtocolError::InvalidTweetType);
+        }
+        if let Some(text) = &self.text
+            && text.chars().count() > MAX_TWEET_TEXT_CHARS
+        {
+            return Err(ProtocolError::InvalidSidecarV2Event);
         }
         if let Some(user_id) = &self.user_id {
             validate_numeric_id(user_id).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
@@ -895,6 +902,11 @@ fn validate_extraction_quoted_tweet(quoted: &ExtractionQuotedTweet) -> Result<()
     }
     if let Some(user_id) = &quoted.user_id {
         validate_numeric_id(user_id).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
+    }
+    if let Some(text) = &quoted.text
+        && text.chars().count() > MAX_TWEET_TEXT_CHARS
+    {
+        return Err(ProtocolError::InvalidSidecarV2Event);
     }
     if let Some(tweet_type) = &quoted.tweet_type
         && !matches!(tweet_type.as_str(), "post" | "reply" | "quote")

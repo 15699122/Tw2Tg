@@ -926,3 +926,16 @@ v0.2.0 的**所有压缩包统一为 7z**。改动覆盖整条契约而非仅改
 | `git diff --check` | PASS |
 
 上述仅为 Linux 侧证据，不能替代 Windows 实机结果。
+
+---
+
+## 7. 混合架构加固与双平台收口路线图（2026-11-27 审计基线）
+
+> 来源：[`../review/hybrid-architecture-audit-2026-11-27.md`](../review/hybrid-architecture-audit-2026-11-27.md)（基于 `dev` `16818c37`）。本节为**待拍板与分阶段执行索引**，具体证据标注、待验证假设（HYP-01~03）、Anti-Goals 与待拍板决策（D1–D4）以该审计文档为准。
+
+| Phase | 核心目标 | 包含任务与优先级 | 前置依赖 |
+|---|---|---|---|
+| **Phase 1：跨语言契约、UTF-8 编码与工作目录安全基线** | 消除确定性类型违约、Windows/Linux 临时目录污染与管道编码崩溃，对齐三方 Protocol v2 契约 | `T1.1` 修复 Python MIME 漏返与死代码（P0）；`T1.2` 消除硬编码 `/tmp/xarchive-v2`（P0）；`T1.3` 强制双端管道 UTF-8 与输入行上限（P0）；`T1.4` 对齐 Schema/Rust/Python 契约（P1） | 审计完成 |
+| **Phase 2：子进程容器化统一与孤儿进程治理** | 消除非受控模式 `gallery-dl` 孤儿逃逸，将账号批次发现纳入平台容器管控，完成通信/启动基准实测 | `T2.1` 修复非受控监督器子树回收（P0）；`T2.2` `spawn_account_batch` 纳入 Job Object/cgroup（P0）；`T2.3` HYP-01~03 实测与背压验证（P1） | Phase 1 |
+| **Phase 3：双生态工具链门禁、权限收敛与文档卫生** | 补齐 Python `ruff`/`mypy` 静态门禁，收敛 Tauri 默认 Capability，修正 `README.md`/架构文档 `aria2-only` 漂移与模块拆分 | `T3.1` Python `ruff`/`mypy` 与锁文件（P1）；`T3.2` 收敛 Tauri 默认 Capability 与 `clipboard-win` 核查（P1）；`T3.3` 修正文档漂移与退役 E2E 清理（P1）；`T3.4` `config/exchange.rs` 与测试外置（P2） | Phase 2 |
+| **Phase 4：Windows 11 端到端实机终验与发布收口** | 在干净 Git revision 上完成 Windows 便携版全链路实机验收并回写证据 | `T4.1` Edge 轮询、多图/视频、Credential Manager + Telegram 发送、离线包 parity 与校验（P0） | Phase 1–3 合入 `origin/dev` |

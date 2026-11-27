@@ -11,12 +11,7 @@
 > summary。本文件只描述能力与限制；能力是否已实现、是否已验证，分别以代码、
 > Plan 与验证证据为准，不能由本文件的任何单行断言升级。
 >
-> **2026-11-11 媒体传输事实校正。** 当前代码是**双路径**：`DownloadConfig::use_aria2`
-> 默认 `false`，此时 `execute_gallery_dl_archive` 让 gallery-dl 直接把媒体写入
-> staging；只有 `use_aria2 = true` 才走 `execute_aria2_archive`。两条路径之后共用同一套
-> Rust staging 路径/大小/hash 校验。下方"aria2-only transfer driver"指的是 driver 层
-> 能力与 `MediaTransferPlan` 契约，**不表示运行时已收敛为单一后端**；roadmap 中冻结的
-> aria2 唯一后端仍是目标，迁移未实施。
+> **2026-11-11 媒体传输事实校正（2026-11-27 补充）。** 2026-11-11 时代码尚为双路径，随后 Phase 2.1（`976e03f1`）已在生产构建中强制收敛为 `aria2-only`（`use_aria2 = true`，`set_use_aria2(false)` fail-closed）；旧 `execute_gallery_dl_archive` 仅保留在 `#[cfg(test)]` 夹具中。下方矩阵中历史日期的“待收敛/双路径”表述不代表当前 HEAD 状态。
 
 
 

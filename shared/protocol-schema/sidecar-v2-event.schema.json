@@ -38,7 +38,7 @@
         "tweet_id": { "type": "string", "pattern": "^[0-9]{1,32}$" },
         "url": { "type": "string", "format": "uri", "maxLength": 2048 },
         "tweet_type": { "type": "string", "enum": ["post", "reply", "quote"] },
-        "text": { "type": ["string", "null"], "maxLength": 4000 },
+        "text": { "type": ["string", "null"], "maxLength": 32768 },
         "username": { "type": ["string", "null"], "maxLength": 4000 },
         "display_name": { "type": ["string", "null"], "maxLength": 4000 },
         "created_at": { "type": ["string", "null"], "maxLength": 4000 },
@@ -54,7 +54,7 @@
             "username": { "type": ["string", "null"], "maxLength": 4000 },
             "display_name": { "type": ["string", "null"], "maxLength": 4000 },
             "user_id": { "type": ["string", "null"], "pattern": "^[0-9]{1,32}$" },
-            "text": { "type": ["string", "null"], "maxLength": 4000 },
+            "text": { "type": ["string", "null"], "maxLength": 32768 },
             "created_at": { "type": ["string", "null"], "maxLength": 4000 },
             "tweet_type": { "type": ["string", "null"], "enum": ["post", "reply", "quote", null] }
           }
@@ -118,6 +118,12 @@
               "mime_type": { "type": "string", "minLength": 1, "maxLength": 128 }
             }
           }
+        },
+        "result": {
+          "anyOf": [
+            { "$ref": "#/$defs/extraction_result" },
+            { "type": "null" }
+          ]
         }
       }
     },

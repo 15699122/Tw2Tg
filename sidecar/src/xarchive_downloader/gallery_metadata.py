@@ -202,10 +202,12 @@ def is_metadata_file(path: Path) -> bool:
 
 def media_type_for_filename(filename: str, mime_type: str | None) -> str:
     """Classify one downloaded file from its guessed MIME type."""
+    del filename
     if mime_type and mime_type.startswith("video/"):
         return "video"
     if mime_type and mime_type.startswith("image/"):
         return "photo"
+    return "unknown"
 
 
 def sanitize_filename(raw: str | None, position: int) -> str:
@@ -382,5 +384,3 @@ def to_discovery_candidate(
         user_id=tweet.user_id,
         username=tweet.username,
     )
-
-    return "unknown"

@@ -52,6 +52,20 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_utf8_stdio() -> None:
+    """Ensure stdio streams use UTF-8 on Windows regardless of OEM/ANSI code page."""
+    import sys
+
+    for stream, errors in (
+        (sys.stdin, "strict"),
+        (sys.stdout, "strict"),
+        (sys.stderr, "replace"),
+    ):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors=errors)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Run the protocol v2 JSONL worker.
 
@@ -59,6 +73,7 @@ def main(argv: list[str] | None = None) -> None:
     from an argument, so a credential never appears in the process command line.
     An explicit flag still wins, which keeps manual and test runs possible.
     """
+    _configure_utf8_stdio()
     args = build_argument_parser().parse_args(argv)
     proxy = args.proxy or os.environ.get("XARCHIVE_PROXY") or None
     proxy_mode = args.proxy_mode or os.environ.get("XARCHIVE_PROXY_MODE") or "system"

@@ -17,13 +17,13 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - 从 X/Twitter 页面发起单条 Tweet 归档。
 - 保存 Tweet metadata、`tweet.json`、`tweet.txt` 和原始媒体文件。
 - 使用 SQLite 保存任务、用户、标签、媒体和事件状态。
-- 通过 gallery-dl 处理 X metadata extraction（`--skip-download` extraction-only）；媒体字节当前由 `use_aria2` 选择传输路径，默认关闭 aria2 时由 gallery-dl 直接写入 staging。
+- 通过 gallery-dl 处理 X metadata extraction（`--no-download` extraction-only）；生产构建已强制使用 aria2 作为唯一媒体传输后端（`use_aria2 = true`）。
 - 记录回复、引用 Tweet、用户名称历史和用户 profile 文件。
 - Telegram Bot API 发送：共享层、Desktop 接线与 Windows 凭据适配已存在，缺 Windows 原生凭据与真实账号发送的实机验收（见开头说明）。
 - 提供可选的 aria2 下载传输和 Windows aria2 管理入口。
 - 提供浏览器 Extension、Native Messaging 协议和 Tauri Desktop Dashboard。
 
-> 当前实现已完成 U8 legacy-path removal：Sidecar protocol v2 与 extraction-only metadata 提取是当前代码链路。**媒体传输目前仍是双路径**：`use_aria2 = false`（默认）时由 gallery-dl 直接写入 staging，`use_aria2 = true` 时才走 aria2 transfer。roadmap 中冻结的“aria2 唯一媒体传输后端”是**既定目标**，迁移尚未实施，不得表述为已完成。Core Bootstrap、真实 Windows Browser/Native Host integration、Registry、Named Pipe 和最终发布验收同样仍有 pending 项。目标终态和后续顺序见 [`docs/development/roadmap.md`](docs/development/roadmap.md)。
+> 当前实现已完成 U8 legacy-path removal 与 Phase 2.1 `aria2-only` 收敛：Sidecar protocol v2、`--no-download` extraction-only 元数据提取与生产环境强制 `aria2` 唯一媒体传输后端（`use_aria2 = true`）是当前代码链路；旧 `gallery-dl` 直接媒体下载路径仅在 `#[cfg(test)]` 测试夹具中保留。Core Bootstrap、真实 Windows Browser/Native Host integration、Registry、Named Pipe 和最终发布验收仍有 pending 项，目标终态和后续顺序见 [`docs/development/roadmap.md`](docs/development/roadmap.md)。
 
 当前阶段构建 Windows 便携版（便携目录），不生成安装器；发布页另按《发布资产（v0.2.0）》提供 `.exe`、7z 资产与校验文件。便携目录包含 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/` 目录。首次启动时，如果便携目录不存在 `download/`，应用会询问创建该目录，拒绝后使用系统“下载”目录下的 `XArchive/`。Windows Native Host 注册、Named Pipe、真实 X 账号链路、**Credential Manager 原生凭据的实机验证**、真实 Telegram 账号发送和完整发布验收仍未完成。
 
@@ -37,7 +37,7 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - JSON/JSONL + JSON Schema：跨进程协议。
 - Telegram Bot API：可选发送功能；共享层、Desktop 接线和 Windows 凭据适配已存在，缺 Windows 原生凭据与真实账号发送的实机验收，暂不宣称可用。
 
-当前运行时已把 gallery-dl 的提取步骤限定为 extraction-only（`--skip-download`）。**媒体传输尚未统一**：`use_aria2` 关闭（默认）时由 gallery-dl 写入 staging，开启时才由 aria2 传输，两条路径之后共用同一套 Rust staging 路径/大小/hash 校验。U8 legacy-path removal 已删除旧 `DownloadRouter` fallback 与 v1 媒体链路，但“aria2 是唯一传输后端”仍是 roadmap 的既定目标而非当前状态。尚未完成的还有真实 Windows Browser/Native Host integration 与最终发布验收，不应据此外推这些已通过。
+当前运行时已把 gallery-dl 的提取步骤限定为 extraction-only（`--no-download`），并在生产构建中强制使用 `aria2` 传输媒体字节，之后由 Rust 执行 staging 路径/大小/SHA-256 校验。U8 legacy-path removal 已删除旧 `DownloadRouter` fallback 与 v1 媒体链路，Phase 2.1 已完成生产 `aria2-only` 收敛；尚未完成的还有真实 Windows Browser/Native Host integration 与最终发布验收，不应据此外推这些已通过。
 
 ## 架构原则
 
@@ -52,7 +52,7 @@ MV3 Extension → Rust Native Messaging Host → Windows Named Pipe → Tauri/Ru
 - Rust 是唯一业务状态所有者。
 - Python 只负责 X 提取和受控下载，不访问主 SQLite，也不负责 Telegram。
 - Extension 只传 Tweet metadata 和状态，不传 Cookie 或媒体二进制。
-- gallery-dl 是 extraction-only adapter；媒体传输目前由 `use_aria2` 在 gallery-dl 与 aria2 之间选择，aria2 唯一后端是既定目标。
+- gallery-dl 是 extraction-only adapter；生产构建强制使用 aria2 作为唯一媒体传输后端（`use_aria2 = true`）。
 - IDM 不进入核心下载链路。
 - 所有跨进程通信使用版本化 JSON/JSONL 协议。
 - 当前可移植层优先提供可测试的协议、请求模型和 mock/fake transport；平台适配不进入核心状态模型。

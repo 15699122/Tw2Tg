@@ -218,9 +218,31 @@ class DiscoveryRunner:
         candidates: list[DiscoveryCandidate] = []
         seen_ids: set[str] = set()
         seen_paths: set[Path] = set()
+        jsonl_parser = GalleryDlJsonlParser()
+        jsonl_offset = 0
+        jsonl_path = work_dir / GALLERY_DL_JSONL
 
         def scan_metadata() -> None:
-            records = read_gallery_jsonl(work_dir)
+            nonlocal jsonl_offset
+            records: list[dict] = []
+            if jsonl_path.is_file():
+                try:
+                    with jsonl_path.open("rb") as stream:
+                        stream.seek(jsonl_offset)
+                        chunk = stream.read()
+                    last_newline = chunk.rfind(b"\n")
+                    if last_newline >= 0:
+                        complete = chunk[: last_newline + 1]
+                        jsonl_offset += len(complete)
+                        start_idx = len(jsonl_parser.order)
+                        for line in complete.decode("utf-8", errors="replace").splitlines():
+                            jsonl_parser.feed_line(line)
+                        records = [
+                            jsonl_parser.records[tid]
+                            for tid in jsonl_parser.order[start_idx:]
+                        ]
+                except OSError:
+                    records = []
             if records:
                 for data in records:
                     try:
@@ -243,6 +265,8 @@ class DiscoveryRunner:
                     candidates.append(candidate)
                     if emit:
                         emit({"event": "candidate", "candidate": candidate_to_json(candidate)})
+                return
+            if jsonl_offset > 0:
                 return
             for path in metadata_paths(work_dir):
                 if path in seen_paths:

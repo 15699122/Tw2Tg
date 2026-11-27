@@ -64,3 +64,16 @@ fn rejects_unknown_fields() {
     let parsed: Result<SidecarV2Command, _> = serde_json::from_str(input);
     assert!(parsed.is_err());
 }
+
+#[test]
+fn rejects_oversized_tweet_and_quoted_text() {
+    let mut result = sample_result();
+    result.text = Some("x".repeat(32_769));
+    let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
+    assert_eq!(event.validate(), Err(ProtocolError::InvalidSidecarV2Event));
+
+    let mut quoted = sample_result();
+    quoted.quoted_tweet.as_mut().expect("quoted").text = Some("x".repeat(32_769));
+    let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), quoted);
+    assert_eq!(event.validate(), Err(ProtocolError::InvalidSidecarV2Event));
+}

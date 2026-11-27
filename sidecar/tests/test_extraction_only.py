@@ -254,3 +254,12 @@ def test_to_extraction_result_completes_extension_and_mime_for_x_media() -> None
     assert result.media[0].mime_type == "image/jpeg"
     assert result.media[1].filename == "HXf25EvbUAAcGX3.png"
     assert result.media[1].mime_type == "image/png"
+
+
+def test_media_type_for_filename_returns_unknown_for_unrecognized_mime() -> None:
+    from xarchive_downloader.gallery_metadata import media_type_for_filename
+
+    assert media_type_for_filename("a.jpg", "image/jpeg") == "photo"
+    assert media_type_for_filename("b.mp4", "video/mp4") == "video"
+    assert media_type_for_filename("c.bin", None) == "unknown"
+    assert media_type_for_filename("d.dat", "application/octet-stream") == "unknown"

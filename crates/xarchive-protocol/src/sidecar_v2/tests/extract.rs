@@ -25,3 +25,11 @@ fn requires_download_media_capability_for_handshake() {
     assert!(!has_required_capabilities(&without_download));
     assert!(has_required_capabilities(&REQUIRED_V2_CAPABILITIES));
 }
+
+#[test]
+fn accepts_long_tweet_text_up_to_limit() {
+    let mut result = sample_result();
+    result.text = Some("a".repeat(25_000));
+    let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
+    assert_eq!(event.validate(), Ok(()));
+}

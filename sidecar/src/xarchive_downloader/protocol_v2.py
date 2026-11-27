@@ -7,6 +7,7 @@ from pathlib import PurePath
 from typing import Any
 
 SIDECAR_V2_PROTOCOL_VERSION = 2
+MAX_TWEET_TEXT_CHARS = 32768
 REQUIRED_V2_CAPABILITIES = (
     "extract_media",
     "download_media",
@@ -201,14 +202,40 @@ def is_profile_url(url: str) -> bool:
     return False
 
 
+def extract_tweet_id(url: str) -> str | None:
+    """Extract the status id from one canonical X/Twitter status URL."""
+    if "://" not in url:
+        return None
+    scheme, remainder = url.split("://", 1)
+    if scheme != "https" or "/" not in remainder:
+        return None
+    authority, path = remainder.split("/", 1)
+    if authority not in {"x.com", "twitter.com"}:
+        return None
+    if "?" in path or "#" in path:
+        return None
+    segments = path.split("/")
+    if (
+        len(segments) != 3
+        or not segments[0]
+        or segments[1] not in {"status", "statuses"}
+        or not segments[2]
+        or not (segments[2].isascii() and segments[2].isdigit())
+    ):
+        return None
+    return segments[2]
+
+
 def validate_extraction_result(result: ExtractionResult) -> str | None:
     """Validate durable extraction data before it is emitted as JSONL."""
     if not result.tweet_id.isdigit() or len(result.tweet_id) > 32:
         return "invalid tweet identity"
-    if result.tweet_id not in result.url:
+    if extract_tweet_id(result.url) != result.tweet_id:
         return "request/job identity mismatch"
     if result.tweet_type not in {"post", "reply", "quote"}:
         return "invalid tweet type"
+    if result.text is not None and len(result.text) > MAX_TWEET_TEXT_CHARS:
+        return "extraction result text is too long"
     if not _is_valid_numeric_id(result.user_id):
         return "invalid author identity"
     if not _is_valid_numeric_id(result.reply_to):
@@ -260,6 +287,11 @@ def _validate_quoted_tweet(quoted: ExtractionQuotedTweet | None) -> str | None:
         return "invalid quoted tweet url"
     if quoted.tweet_id not in quoted.url:
         return "quoted tweet identity mismatch"
+    url_tweet_id = extract_tweet_id(quoted.url)
+    if url_tweet_id is not None and url_tweet_id != quoted.tweet_id:
+        return "quoted tweet identity mismatch"
+    if quoted.text is not None and len(quoted.text) > MAX_TWEET_TEXT_CHARS:
+        return "quoted tweet text is too long"
     if not _is_valid_numeric_id(quoted.user_id):
         return "invalid quoted author identity"
     if quoted.tweet_type is not None and quoted.tweet_type not in {"post", "reply", "quote"}:
@@ -350,7 +382,7 @@ def validate_download_result(download: DownloadResult) -> str | None:
     """
     if not download.tweet_id.isdigit() or len(download.tweet_id) > 32:
         return "invalid download tweet identity"
-    if download.tweet_id not in download.url:
+    if extract_tweet_id(download.url) != download.tweet_id:
         return "download identity mismatch"
     if len(download.media) > 64:
         return "download media list is too large"

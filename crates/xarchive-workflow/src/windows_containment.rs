@@ -735,6 +735,35 @@ impl WindowsWriterJob {
     }
 }
 
+/// Lightweight anonymous `KILL_ON_JOB_CLOSE` Job Object for non-publication
+/// child trees (e.g. account discovery or manual sidecar sessions) so
+/// abnormal Desktop exit reclaims the full descendant tree.
+pub struct AnonymousProcessJob(job::OwnedHandle);
+
+impl AnonymousProcessJob {
+    pub fn create_kill_on_close() -> io::Result<Self> {
+        let job = job::create_job_object_w(None, None).map_err(io::Error::from)?;
+        let mut limits = job::object::ExtendedLimitInformation::default();
+        limits.basic_limit_information.limit_flags = job::object::limit::KILL_ON_JOB_CLOSE;
+        job::set_information_job_object(&job, limits).map_err(io::Error::from)?;
+        Ok(Self(job))
+    }
+
+    pub fn assign_pid(&self, pid: u32) -> io::Result<()> {
+        let handle = process::open_process(
+            access::PROCESS_SET_QUOTA | access::PROCESS_TERMINATE,
+            false,
+            pid,
+        )
+        .map_err(io::Error::from)?;
+        job::assign_process_to_job_object(&self.0, &handle).map_err(io::Error::from)
+    }
+
+    pub fn terminate(&self) -> io::Result<()> {
+        job::terminate_job_object(&self.0, 1).map_err(io::Error::from)
+    }
+}
+
 fn windows_command_line(executable: &Path, args: &[&str]) -> io::Result<Vec<u16>> {
     use std::os::windows::ffi::OsStrExt;
     let mut line = Vec::new();

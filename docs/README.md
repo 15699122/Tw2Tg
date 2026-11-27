@@ -46,6 +46,7 @@
 | `development/browser-automatic-pairing-plan.md` | Browser Extension 与同机 Desktop 的 Native Messaging bootstrap、一次性 ticket、WebSocket、Windows Named Pipe/注册/冷启动分批计划；计划文档，不是实现或验证证据 |
 | `review/` | 周期性工程审查报告：发现、证据、严重性/置信度与验证状态；不作为实现事实来源 |
 | `review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；整改计划见 `development/roadmap.md` R7，风险见 RISK-014 至 RISK-022 |
+| `review/hybrid-architecture-audit-2026-11-27.md` | 2026-11-27 混合架构现状审计、跨语言/双平台风险清单、Phase 1–4 路线图与待拍板决策（计划与审计基线，非实现或验证证据） |
 | `development/cross-platform-validation.md` | Linux ↔ Windows 开发与验证流程 |
 | `validation/windows.md` | Windows 验证执行规范和报告模板 |
 | `validation/windows-queue.md` | 当前 Windows Validation Queue，唯一当前队列事实源 |

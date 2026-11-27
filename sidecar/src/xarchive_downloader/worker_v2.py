@@ -27,6 +27,7 @@ from .protocol_v2 import (
 
 
 MAX_QUEUED_COMMANDS = 32
+MAX_COMMAND_LINE_BYTES = 1024 * 1024
 
 
 class ExtractionControl:
@@ -270,7 +271,8 @@ def handle_extract(
         kwargs: dict[str, Any] = {"emit": emit}
         if control is not None:
             kwargs.update({"is_cancelled": control.stop_reason, "on_tick": drain})
-        extraction = runner.run(str(command["url"]), Path("/tmp/xarchive-v2"), **kwargs)
+        with tempfile.TemporaryDirectory(prefix="xarchive-v2-extract-") as directory:
+            extraction = runner.run(str(command["url"]), Path(directory), **kwargs)
     except GalleryDlError as error:
         emit_v2(
             {
@@ -585,11 +587,71 @@ def run_v2_worker(
                 continue
         return False
 
+    def read_bounded_command_line() -> tuple[str | None, dict[str, Any] | None]:
+        raw_buffer = getattr(input_stream, "buffer", None)
+        if raw_buffer is not None:
+            chunk = raw_buffer.readline(MAX_COMMAND_LINE_BYTES + 1)
+            if not chunk:
+                return None, None
+            if len(chunk) > MAX_COMMAND_LINE_BYTES and not chunk.endswith(b"\n"):
+                while True:
+                    more = raw_buffer.readline(65536)
+                    if not more or more.endswith(b"\n"):
+                        break
+                return "", {
+                    "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                    "event": "failed",
+                    "job_id": "unknown",
+                    "error_code": "INVALID_COMMAND",
+                    "error_message": "command line exceeded maximum size",
+                }
+            try:
+                return chunk.decode("utf-8"), None
+            except UnicodeDecodeError:
+                return "", {
+                    "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                    "event": "failed",
+                    "job_id": "unknown",
+                    "error_code": "INVALID_ENCODING",
+                    "error_message": "command input must be valid UTF-8",
+                }
+
+        try:
+            line = input_stream.readline(MAX_COMMAND_LINE_BYTES + 1)
+        except UnicodeDecodeError:
+            return "", {
+                "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                "event": "failed",
+                "job_id": "unknown",
+                "error_code": "INVALID_ENCODING",
+                "error_message": "command input must be valid UTF-8",
+            }
+        if not line:
+            return None, None
+        if len(line) > MAX_COMMAND_LINE_BYTES and not line.endswith("\n"):
+            while True:
+                more = input_stream.readline(65536)
+                if not more or more.endswith("\n"):
+                    break
+            return "", {
+                "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                "event": "failed",
+                "job_id": "unknown",
+                "error_code": "INVALID_COMMAND",
+                "error_message": "command line exceeded maximum size",
+            }
+        return line, None
+
     def read_commands() -> None:
         try:
-            for line in input_stream:
-                if reader_stopped.is_set():
-                    return
+            while not reader_stopped.is_set():
+                line, stream_error = read_bounded_command_line()
+                if line is None:
+                    break
+                if stream_error is not None:
+                    if not enqueue(stream_error):
+                        return
+                    continue
                 if not line.strip():
                     continue
                 try:
